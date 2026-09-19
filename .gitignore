@@ -36,8 +36,13 @@ Thumbs.db
 output/
 updated/
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+
+# 临时文件 / 截图
+error_screenshot.png
 
 # Logs
 *.log
