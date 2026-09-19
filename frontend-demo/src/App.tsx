@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useDeepAgentSession } from './hooks/useDeepAgentSession'
 import type { MonitorMessage } from './types'
 
@@ -22,17 +24,60 @@ function getEventStyle(event: MonitorMessage) {
   }
 }
 
-// 把 Markdown 文本渲染成简单 HTML
-function renderMarkdown(text: string) {
-  if (!text) return null
-  return text.split('\n').map((line, i) => {
-    if (line.startsWith('## ')) return <h2 key={i} className="text-base font-semibold text-gray-900 mt-4 mb-2">{line.slice(3)}</h2>
-    if (line.startsWith('### ')) return <h3 key={i} className="text-sm font-medium text-gray-800 mt-3 mb-1.5">{line.slice(4)}</h3>
-    if (line.startsWith('- ')) return <div key={i} className="flex gap-2 text-sm text-gray-700 py-0.5"><span className="text-gray-400">•</span><span>{line.slice(2)}</span></div>
-    if (line.startsWith('1. ') || line.startsWith('2. ') || line.startsWith('3. ')) return <div key={i} className="flex gap-2 text-sm text-gray-700 py-0.5"><span className="text-gray-400">{line.slice(0, line.indexOf(' '))}</span><span>{line.slice(line.indexOf(' ') + 1)}</span></div>
-    if (line === '') return <div key={i} className="h-2"></div>
-    return <p key={i} className="text-sm text-gray-700 leading-relaxed">{line}</p>
-  })
+// 统一的 Markdown 渲染组件（支持 GFM：表格、删除线、任务列表、代码块等）
+function MarkdownText({ text }: { text: string }) {
+  return (
+    <div className="text-sm text-gray-700 leading-relaxed space-y-2">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ ...props }) => <h1 className="text-lg font-bold text-gray-900 mt-4 mb-2" {...props} />,
+          h2: ({ ...props }) => <h2 className="text-base font-semibold text-gray-900 mt-4 mb-2" {...props} />,
+          h3: ({ ...props }) => <h3 className="text-sm font-semibold text-gray-800 mt-3 mb-1.5" {...props} />,
+          h4: ({ ...props }) => <h4 className="text-sm font-medium text-gray-800 mt-2 mb-1" {...props} />,
+          p: ({ ...props }) => <p className="my-1.5" {...props} />,
+          ul: ({ ...props }) => <ul className="list-disc pl-5 my-1.5 space-y-1" {...props} />,
+          ol: ({ ...props }) => <ol className="list-decimal pl-5 my-1.5 space-y-1" {...props} />,
+          li: ({ ...props }) => <li className="marker:text-gray-400" {...props} />,
+          strong: ({ ...props }) => <strong className="font-semibold text-gray-900" {...props} />,
+          em: ({ ...props }) => <em className="italic" {...props} />,
+          a: ({ ...props }) => <a className="text-blue-600 underline break-all" target="_blank" rel="noreferrer" {...props} />,
+          blockquote: ({ ...props }) => (
+            <blockquote className="border-l-4 border-amber-300 bg-amber-50 px-3 py-1.5 my-2 text-gray-600" {...props} />
+          ),
+          hr: ({ ...props }) => <hr className="my-3 border-gray-200" {...props} />,
+          code: ({ className, children, ...props }) => {
+            const isBlock = /language-/.test(className || '')
+            if (isBlock) {
+              return (
+                <code className="block bg-gray-900 text-gray-100 text-xs rounded-lg p-3 overflow-x-auto" {...props}>
+                  {children}
+                </code>
+              )
+            }
+            return (
+              <code className="bg-gray-100 text-rose-600 text-xs px-1.5 py-0.5 rounded" {...props}>
+                {children}
+              </code>
+            )
+          },
+          pre: ({ ...props }) => <pre className="my-2" {...props} />,
+          table: ({ ...props }) => (
+            <div className="overflow-x-auto my-3">
+              <table className="min-w-full border-collapse text-xs" {...props} />
+            </div>
+          ),
+          thead: ({ ...props }) => <thead className="bg-gray-50" {...props} />,
+          th: ({ ...props }) => (
+            <th className="border border-gray-200 px-3 py-2 text-left font-semibold text-gray-800" {...props} />
+          ),
+          td: ({ ...props }) => <td className="border border-gray-200 px-3 py-2 align-top" {...props} />,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
 }
 
 export default function App() {
@@ -235,9 +280,7 @@ export default function App() {
               {/* 最终结果 */}
               {result && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="prose prose-sm max-w-none">
-                    {renderMarkdown(result)}
-                  </div>
+                  <MarkdownText text={result} />
                   {/* 生成的文件列表 */}
                   {files.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
