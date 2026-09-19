@@ -64,3 +64,10 @@ testem.log
 # System Files
 .DS_Store
 Thumbs.db
+
+# SQLite checkpoints & test cache
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/
+
