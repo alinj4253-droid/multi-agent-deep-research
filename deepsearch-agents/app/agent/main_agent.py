@@ -15,7 +15,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.llm import model
 from app.agent.prompts import main_agent_content
-from app.agent.subagents.database_query_agent import database_query_agent
+from app.agent.subagents.data_analysis_agent import data_analysis_agent
 from app.agent.subagents.knowledge_base_agent import knowledge_base_agent
 from app.agent.subagents.network_search_agent import network_search_agent
 from app.api.context import (
@@ -39,7 +39,7 @@ main_agent = create_deep_agent(
     system_prompt=main_agent_content["system_prompt"],
     tools=[generate_markdown, convert_md_to_pdf, read_file_content],
     checkpointer=InMemorySaver(),
-    subagents=[database_query_agent, network_search_agent, knowledge_base_agent],
+    subagents=[data_analysis_agent, network_search_agent, knowledge_base_agent],
 )
 
 # 当前文件位于 app/agent/main_agent.py，parents[1] 即 app 目录
