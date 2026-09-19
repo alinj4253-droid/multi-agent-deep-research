@@ -11,7 +11,8 @@ import shutil
 from pathlib import Path
 
 from deepagents import create_deep_agent
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
 
 from app.agent.llm import model
 from app.agent.prompts import main_agent_content
@@ -30,20 +31,26 @@ from app.tools.markdown_tools import generate_markdown
 from app.tools.pdf_tools import convert_md_to_pdf
 from app.tools.upload_file_read_tool import read_file_content
 
+# 当前文件位于 app/agent/main_agent.py，parents[1] 即 app 目录
+project_root_path = Path(__file__).parents[1].resolve()
+
+# 初始化 SQLite Checkpointer，实现会话持久化
+# 相比内存版本，SQLite 版本在服务重启后仍能恢复历史会话状态
+_db_path = project_root_path / "checkpoints.db"
+_conn = sqlite3.connect(str(_db_path), check_same_thread=False)
+checkpointer = SqliteSaver(_conn)
+
 # 主智能体是调度中心：
 # 1. tools 只放最终交付相关的文件工具
-# 2. subagents 放网络、数据库、RAGFlow 三类信息获取助手
-# 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文
+# 2. subagents 放网络检索、数据分析、私有文档三类助手
+# 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文（持久化到 SQLite）
 main_agent = create_deep_agent(
     model=model,
     system_prompt=main_agent_content["system_prompt"],
     tools=[generate_markdown, convert_md_to_pdf, read_file_content],
-    checkpointer=InMemorySaver(),
+    checkpointer=checkpointer,
     subagents=[data_analysis_agent, network_search_agent, knowledge_base_agent],
 )
-
-# 当前文件位于 app/agent/main_agent.py，parents[1] 即 app 目录
-project_root_path = Path(__file__).parents[1].resolve()
 
 
 async def run_deep_agent(task_query, session_id):
@@ -126,7 +133,7 @@ async def run_deep_agent(task_query, session_id):
                             # DeepAgents 调用子智能体时，本质上会产生名为 task 的工具调用
                             for tool_call in last_msg.tool_calls:
                                 if tool_call["name"] == "task":
-                                    # 子智能体调用单独上报，前端可以展示“正在调用哪个专家助手”
+                                    # 子智能体调用单独上报，前端可以展示"正在调用哪个专家助手"
                                     monitor.report_assistant(
                                         tool_call["args"]["subagent_type"],
                                         {
