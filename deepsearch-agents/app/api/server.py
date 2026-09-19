@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.agent.main_agent import run_deep_agent
+from app.agent.main_agent import run_deep_agent, init_main_agent, close_main_agent
 from app.api.monitor import manager
 
 @asynccontextmanager
@@ -35,13 +35,22 @@ async def lifespan(_app: FastAPI):
     """
     服务生命周期入口。
 
-    启动时绑定当前事件循环到 WebSocket 管理器，确保后台 Agent 任务可以把
-    monitor 事件投递回 FastAPI 所在的 loop。
+    启动时：
+    1. 绑定当前事件循环到 WebSocket 管理器
+    2. 异步初始化主智能体（含 SQLite 持久化连接）
+    关闭时：清理数据库连接
     """
     loop = asyncio.get_running_loop()
     manager.set_loop(loop)
     print(f"[Server] WebSocket Manager bound to loop: {id(loop)}")
+
+    # 异步初始化主智能体（AsyncSqliteSaver 需要在事件循环中初始化）
+    await init_main_agent()
+
     yield
+
+    # 服务关闭时清理资源
+    await close_main_agent()
 
 
 # 当前文件位于 app/api/server.py，运行时目录统一收敛到 app 目录
@@ -290,4 +299,4 @@ async def websocket_endpoint(websocket: WebSocket, thread_id: str):
 
 
 if __name__ == "__main__":
-    uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.api.server:app", host="0.0.0.0", port=8001, reload=False)

@@ -2,17 +2,19 @@
 主智能体组装与异步执行模块
 
 负责把模型、主提示词、文件类工具和三个专家子智能体组装成 DeepAgent，
-并提供 run_deep_agent 作为后续 API 层调用的统一入口。运行时还会为每个
-session_id 创建独立工作目录，并把工具调用、子智能体调用和最终结果推送给前端。
+并提供 run_deep_agent 作为后续 API 层调用的统一入口。
+
+注意：由于使用 AsyncSqliteSaver（异步 SQLite 持久化），
+agent 需要在 FastAPI lifespan 中通过 init_main_agent() 异步初始化。
 """
 
 import asyncio
 import shutil
 from pathlib import Path
 
+import aiosqlite
 from deepagents import create_deep_agent
-from langgraph.checkpoint.sqlite import SqliteSaver
-import sqlite3
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.agent.llm import model
 from app.agent.prompts import main_agent_content
@@ -34,23 +36,45 @@ from app.tools.upload_file_read_tool import read_file_content
 # 当前文件位于 app/agent/main_agent.py，parents[1] 即 app 目录
 project_root_path = Path(__file__).parents[1].resolve()
 
-# 初始化 SQLite Checkpointer，实现会话持久化
-# 相比内存版本，SQLite 版本在服务重启后仍能恢复历史会话状态
-_db_path = project_root_path / "checkpoints.db"
-_conn = sqlite3.connect(str(_db_path), check_same_thread=False)
-checkpointer = SqliteSaver(_conn)
+# 全局 agent 实例，在 init_main_agent() 中初始化
+main_agent = None
+_db_conn = None
 
-# 主智能体是调度中心：
-# 1. tools 只放最终交付相关的文件工具
-# 2. subagents 放网络检索、数据分析、私有文档三类助手
-# 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文（持久化到 SQLite）
-main_agent = create_deep_agent(
-    model=model,
-    system_prompt=main_agent_content["system_prompt"],
-    tools=[generate_markdown, convert_md_to_pdf, read_file_content],
-    checkpointer=checkpointer,
-    subagents=[data_analysis_agent, network_search_agent, knowledge_base_agent],
-)
+
+async def init_main_agent():
+    """
+    异步初始化主智能体（在 FastAPI lifespan 中调用）
+
+    使用 AsyncSqliteSaver 实现会话状态持久化，
+    数据库文件保存在项目根目录 checkpoints.db
+    """
+    global main_agent, _db_conn
+
+    # 初始化异步 SQLite 连接和 Checkpointer
+    db_path = project_root_path / "checkpoints.db"
+    _db_conn = await aiosqlite.connect(str(db_path))
+    checkpointer = AsyncSqliteSaver(_db_conn)
+
+    # 主智能体是调度中心：
+    # 1. tools 只放最终交付相关的文件工具
+    # 2. subagents 放网络检索、数据分析、私有文档三类助手
+    # 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文（持久化到 SQLite）
+    main_agent = create_deep_agent(
+        model=model,
+        system_prompt=main_agent_content["system_prompt"],
+        tools=[generate_markdown, convert_md_to_pdf, read_file_content],
+        checkpointer=checkpointer,
+        subagents=[data_analysis_agent, network_search_agent, knowledge_base_agent],
+    )
+    print("[MainAgent] 主智能体初始化完成（SQLite 持久化已启用）")
+
+
+async def close_main_agent():
+    """关闭数据库连接（在 FastAPI shutdown 时调用）"""
+    global _db_conn
+    if _db_conn is not None:
+        await _db_conn.close()
+        _db_conn = None
 
 
 async def run_deep_agent(task_query, session_id):
@@ -62,6 +86,9 @@ async def run_deep_agent(task_query, session_id):
     :param task_query: 前端提交的原始任务问题
     :param session_id: 当前任务 ID，同时用于 thread_id、输出目录和 WebSocket 定向推送
     """
+    if main_agent is None:
+        raise RuntimeError("主智能体尚未初始化，请先调用 init_main_agent()")
+
     print(f"[MainAgent] 开始执行会话，session_id={session_id}")
 
     # 每个会话独立使用 output/session_{session_id}，避免不同用户的产物互相覆盖
@@ -75,17 +102,14 @@ async def run_deep_agent(task_query, session_id):
     )
 
     # 上传文件先落在 updated/session_{session_id}，执行前复制到本次 output 工作目录
-    # 这样读文件工具和生成文件工具都只需要围绕同一个 session_dir 工作
     updated_dir_path = project_root_path / "updated" / f"session_{session_id}"
     updated_info_prompt = ""
     if updated_dir_path.exists():
         files = [f.name for f in updated_dir_path.iterdir() if f.is_file()]
         if files:
             for filename in files:
-                # copy2 会保留上传文件的修改时间、权限等元数据，便于后续排查文件来源
                 shutil.copy2(updated_dir_path / filename, session_dir / filename)
 
-            # 把上传文件列表注入用户消息，提醒模型先调用 read_file_content 获取附件内容
             updated_info_prompt = (
                 "\n    [已上传文件] 已加载到工作目录:\n"
                 + "\n".join([f"    - {f}" for f in files])
@@ -110,18 +134,16 @@ async def run_deep_agent(task_query, session_id):
 
     规则：
     1. 新生成文件必须保存到工作目录：'{relative_session_dir_str}/filename'
-    2. 读取已上传的文件时，请直接将文件名（例如：'开篇.txt'）作为 filename 参数传入（read_file_content）读取工具，不要带上任何目录前缀。
+    2. 读取已上传的文件时，请直接将文件名作为 filename 参数传入（read_file_content）读取工具，不要带上任何目录前缀。
     3. 使用相对路径，禁止使用绝对路径
     4. 若存在上传文件，请先分析内容
     """
 
     try:
-        # astream 会持续产出模型节点、工具节点和子智能体节点的状态片段
         async for chunk in main_agent.astream(
             {"messages": [{"role": "user", "content": task_query + path_instruction}]},
             config=config,
         ):
-            # chunk 形如 {"model": {"messages": [...]}}，这里主要关心模型最新消息
             for node_name, state in chunk.items():
                 if not state or "messages" not in state:
                     continue
@@ -130,10 +152,8 @@ async def run_deep_agent(task_query, session_id):
                     last_msg = messages[-1]
                     if node_name == "model":
                         if last_msg.tool_calls:
-                            # DeepAgents 调用子智能体时，本质上会产生名为 task 的工具调用
                             for tool_call in last_msg.tool_calls:
                                 if tool_call["name"] == "task":
-                                    # 子智能体调用单独上报，前端可以展示"正在调用哪个专家助手"
                                     monitor.report_assistant(
                                         tool_call["args"]["subagent_type"],
                                         {
@@ -143,7 +163,6 @@ async def run_deep_agent(task_query, session_id):
                                         },
                                     )
                         elif last_msg.content:
-                            # 模型没有继续调用工具时，最新文本内容就是本轮可反馈给前端的结果
                             print(
                                 f"主智能体执行结果，最终结果：{last_msg.content[:100]}"
                             )
@@ -153,16 +172,6 @@ async def run_deep_agent(task_query, session_id):
         monitor.report_task_cancelled()
         raise
     except Exception as e:
-        # 异步执行异常也走 monitor，保证前端能收到明确错误事件
         monitor._emit("error", f"执行主智能发生异常信息：{str(e)}")
     finally:
-        # 任务结束后恢复 ContextVar，避免后续请求复用到本次会话目录或 thread_id
         reset_session_context(session_dir_token, session_id_token)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(
-        run_deep_agent("从网络查询机器人信息，并生成Markdown文件", "test_session_001")
-    )
