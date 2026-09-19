@@ -2,20 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { useDeepAgentSession } from './hooks/useDeepAgentSession'
 import type { MonitorMessage } from './types'
 
-// 历史会话模拟数据（后续可从后端获取）
-interface HistorySession {
-  id: string
-  title: string
-  time: string
-}
-
-const mockHistory: HistorySession[] = [
-  { id: '1', title: '3D Gaussian Splatting 研究综述', time: '10:30' },
-  { id: '2', title: '人群计数方法对比分析', time: '昨天' },
-  { id: '3', title: 'Transformer 视觉模型进展', time: '昨天' },
-  { id: '4', title: '点云处理技术调研', time: '3天前' },
-]
-
 // 事件图标和颜色映射
 function getEventStyle(event: MonitorMessage) {
   switch (event.event) {
@@ -51,8 +37,6 @@ function renderMarkdown(text: string) {
 
 export default function App() {
   const [input, setInput] = useState('')
-  const [activeSession, setActiveSession] = useState('1')
-  const [showHistory] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 使用真实后端 hook
@@ -124,26 +108,11 @@ export default function App() {
           </button>
         </div>
 
-        {/* 历史会话 */}
-        {showHistory && (
-          <div className="flex-1 overflow-y-auto px-3">
-            <p className="text-xs text-gray-400 px-2 mb-2">历史会话</p>
-            {mockHistory.map(session => (
-              <button
-                key={session.id}
-                onClick={() => setActiveSession(session.id)}
-                className={`w-full text-left px-3 py-2.5 rounded-lg mb-1 text-sm transition-colors ${
-                  activeSession === session.id
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <div className="truncate">{session.title}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{session.time}</div>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* 历史会话（暂无数据，后续接入后端历史接口） */}
+        <div className="flex-1 overflow-y-auto px-3">
+          <p className="text-xs text-gray-400 px-2 mb-2">历史会话</p>
+          <p className="text-xs text-gray-300 px-2 py-4 text-center">暂无历史会话</p>
+        </div>
 
         {/* 底部：智能体状态 */}
         <div className="p-4 border-t border-gray-100">
