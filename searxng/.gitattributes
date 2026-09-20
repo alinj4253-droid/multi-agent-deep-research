@@ -1,0 +1,5 @@
+# SearXNG 相关脚本在 WSL(Linux) 内执行，必须始终使用 LF 换行，
+# 否则 Windows 检出为 CRLF 后会出现 `bash\r` 类错误。
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf

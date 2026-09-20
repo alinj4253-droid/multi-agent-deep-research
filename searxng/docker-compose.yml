@@ -1,0 +1,46 @@
+# SearXNG 私有元搜索引擎 —— 本地一键部署（WSL2 Docker）
+#
+# 部署（在 WSL2 Ubuntu 内）：
+#   cd <项目根目录>/searxng
+#   bash deploy.sh
+# 就绪检查：
+#   bash start_wait.sh
+# Windows 后端通过 http://localhost:8888 访问（WSL2 自动 localhost 转发）。
+#
+# 注意：不能把 settings.yml 直接 bind mount 到 /etc/searxng/settings.yml ——
+# Windows drvfs(/mnt/d) 上的文件会被 granian 文件监视判为反复变更，导致容器重启循环。
+# 因此先挂载到非监控路径 /config/settings.yml，容器启动时复制到 /etc/searxng 再运行官方入口。
+services:
+  searxng:
+    container_name: searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      # WSL 内 8888 -> 容器 8080，Windows 用 http://localhost:8888
+      - "8888:8080"
+    volumes:
+      - ./settings.yml:/config/settings.yml:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        cp /config/settings.yml /etc/searxng/settings.yml
+        exec /usr/local/searxng/entrypoint.sh
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      - INSTANCE_NAME=DeepSearch SearXNG
+    # 让容器内可用 host.docker.internal 访问宿主机（日后配置出网代理聚合 Google 时使用）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"

@@ -1,0 +1,99 @@
+# SearXNG 私有实例配置（供 deepsearch-agents 网络检索助手调用）
+# 采用 use_default_settings 继承镜像内置的全部引擎与默认值，仅覆盖关键项。
+# 文档：https://docs.searxng.org/admin/settings/index.html
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "DeepSearch SearXNG"
+
+server:
+  # 私钥（本地部署用，随机 64 位十六进制；如需更换可执行 openssl rand -hex 32）
+  secret_key: "CHANGE_ME_RUN_openssl_rand_hex_32_TO_GENERATE"
+  # 私有单用户实例，关闭防滥用限流器（限流器依赖 Redis，关闭后可单容器运行）
+  limiter: false
+  image_proxy: false
+  # 仅本机使用，不向公开统计上报
+  public_instance: false
+  port: 8080
+  bind_address: "0.0.0.0"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  # 关键：默认只有 html，必须显式开启 json，否则 /search?format=json 返回 403
+  formats:
+    - html
+    - json
+  default_lang: "zh-CN"
+
+ui:
+  static_use_hash: true
+
+# 出网设置：默认直连。
+# 本机代理（Clash/mihomo TUN）会从网络层污染 Google / DuckDuckGo / Brave /
+# Wikipedia 的 DNS（解析到假 IP 并超时），且 WSL2/容器流量默认不走宿主代理。
+# 因此下方 engines 显式启用在当前网络下直连可用的引擎（Bing / Yandex /
+# 搜狗 / 360），并显式关闭被污染的引擎，避免每次查询都等满超时。
+# 若日后为容器配置了可用出网代理（见文末 outgoing.proxies 注释），可把
+# google / duckduckgo / brave / wikipedia 重新 disabled: false 以恢复多源聚合。
+outgoing:
+  # 单引擎请求超时：直连可用引擎通常 0.3-3s 返回，给 6s 余量
+  request_timeout: 6.0
+  # 浏览器端 max-time 上限
+  max_request_timeout: 12.0
+  # 配置宿主代理后可取消注释（端口改成代理软件实际的 mixed-port，
+  # 并需允许局域网连接，docker-compose.yml 已配 host.docker.internal）：
+  # proxies:
+  #   all://:
+  #     - http://host.docker.internal:7890
+
+engines:
+  # ===== 直连可用，显式启用（默认配置里它们是 disabled）=====
+  # enable_http3: false —— bing 引擎默认启用 HTTP/3，在本机代理 TUN + WSL NAT
+  # 环境下 QUIC 抖动会导致间歇性请求失败、被 SearXNG 自动挂起，关闭后稳定
+  # base_url: 国内网络下 www.bing.com 会 302 跳转到 cn.bing.com，而 SearXNG
+  # 不跟随该跳转（直接得到 0 结果），显式指定 cn.bing.com 稳定返回结果
+  - name: bing
+    disabled: false
+    enable_http3: false
+    base_url: "https://cn.bing.com"
+  - name: yandex
+    disabled: false
+  - name: sogou
+    disabled: false
+  - name: 360search
+    disabled: false
+  - name: bing news
+    disabled: false
+    enable_http3: false
+    base_url: "https://cn.bing.com"
+
+  # ===== 当前网络被 DNS 污染 / 反爬拦截，显式关闭以免拖慢每次查询 =====
+  # Google 系：cse.google.com / www.google.com 被 TUN 劫持超时
+  - name: google
+    disabled: true
+  - name: google cse
+    disabled: true
+  - name: google news
+    disabled: true
+  # DuckDuckGo：html.duckduckgo.com DNS 被污染
+  - name: duckduckgo
+    disabled: true
+  - name: duckduckgo web
+    disabled: true
+  - name: duckduckgo news
+    disabled: true
+  # Brave：search.brave.com 不可达
+  - name: brave
+    disabled: true
+  - name: brave.news
+    disabled: true
+  # Wikipedia / Wikidata：zh.wikipedia.org 等不可达
+  - name: wikipedia
+    disabled: true
+  - name: wikidata
+    disabled: true
+  # 百度：容器出口 IP 触发验证码（CAPTCHA），结果不稳定
+  - name: baidu
+    disabled: true

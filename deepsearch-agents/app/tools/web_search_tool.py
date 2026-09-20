@@ -1,100 +1,50 @@
 """
-网络搜索工具模块（DuckDuckGo，免费、无需 API Key）
+网络搜索工具模块（多数据源故障转移，免费、无需付费 API Key）
 
 封装 internet_search 工具，供网络检索子智能体检索互联网公开信息。
+数据源优先级：
+1. SearXNG（本地自建元搜索引擎，聚合 Google/Bing/DuckDuckGo 等 70+ 源）——主
+2. DuckDuckGo（ddgs 非官方接口，零配置）——兜底，SearXNG 不可用时自动降级
 
-包含三项检索优化：
-1. 检索次数预算（SearchBudget）：按会话硬性限制对外检索次数，防止子智能体无限搜索，控制延迟与成本
-2. LRU 语义缓存：相同查询直接返回缓存，减少重复请求和响应延迟
-3. 关键词重排序：根据查询词在标题/摘要中的匹配度对结果二次排序，提升 Top-K 相关性
+包含四项检索治理：
+1. 检索次数预算（SearchBudget）：按会话硬性限制对外检索次数，防止无限搜索
+2. LRU 语义缓存（SearchCache）：相同查询直接返回，减少重复请求
+3. 熔断器（CircuitBreaker）：数据源连续失败后短时跳过，避免反复等待超时
+4. 关键词重排序：按查询词在标题/摘要中的匹配度二次排序，提升 Top-K 相关性
 """
 
 import re
-from collections import OrderedDict
-from typing import Literal, Optional
+from typing import Callable, Optional
 
 from langchain_core.tools import tool
 
 from app.api.context import get_thread_context
 from app.api.monitor import monitor
 from app.tools.ddg_search import duckduckgo_search
+from app.tools.search_common import (
+    CircuitBreaker,
+    SearchBudget,
+    SearchCache,
+)
+from app.tools.searxng_search import searxng_search
 
-
-# ============================================================
-# 检索次数预算：按会话限制"实际对外搜索"次数（硬限制）
-# ============================================================
-class SearchBudget:
-    """
-    按 thread_id 统计每个研究任务的实际对外检索次数
-
-    提示词对模型的检索次数约束是"软约束"，模型可能不严格遵守；
-    本类在工具层提供"硬限制"：达到上限后不再请求搜索引擎，
-    直接返回引导模型基于已有结果总结的结构化提示，避免 Agent 陷入检索循环。
-    缓存命中不消耗预算（没有产生对外请求）。
-    """
-
-    def __init__(self, max_per_session: int = 3):
-        self.max_per_session = max_per_session
-        self._counts: dict[str, int] = {}
-
-    def reset(self, thread_id: str) -> None:
-        """任务开始时重置该会话的计数"""
-        self._counts.pop(thread_id, None)
-
-    def remaining(self, thread_id: Optional[str]) -> int:
-        """该会话剩余可用检索次数；无会话上下文时不限制"""
-        if not thread_id:
-            return self.max_per_session
-        return max(0, self.max_per_session - self._counts.get(thread_id, 0))
-
-    def consume(self, thread_id: Optional[str]) -> int:
-        """消耗一次检索预算，返回消耗后的已用次数"""
-        if not thread_id:
-            return 0
-        count = self._counts.get(thread_id, 0) + 1
-        self._counts[thread_id] = count
-        # 简单防护：字典过大时清理最早的一批（按插入顺序）
-        if len(self._counts) > 200:
-            for k in list(self._counts.keys())[:100]:
-                self._counts.pop(k, None)
-        return count
-
+# 向后兼容：历史代码/测试从本模块导入 SearchBudget / SearchCache
+__all__ = [
+    "internet_search",
+    "SearchBudget",
+    "SearchCache",
+    "CircuitBreaker",
+    "search_with_fallback",
+]
 
 # 每个研究任务最多实际对外检索 3 次（简单问题通常 1 次即可）
 search_budget = SearchBudget(max_per_session=3)
-
-
-# ============================================================
-# 语义缓存：LRU，最多保存 50 条最近查询结果
-# ============================================================
-class SearchCache:
-    """基于 LRU 的搜索结果缓存，避免重复请求搜索引擎"""
-
-    def __init__(self, max_size: int = 50):
-        self.cache = OrderedDict()
-        self.max_size = max_size
-
-    def _normalize_query(self, query: str) -> str:
-        """标准化查询：小写 + 去除多余空格，提高缓存命中率"""
-        return re.sub(r"\s+", " ", query.strip().lower())
-
-    def get(self, query: str):
-        key = self._normalize_query(query)
-        if key in self.cache:
-            self.cache.move_to_end(key)
-            return self.cache[key]
-        return None
-
-    def set(self, query: str, result):
-        key = self._normalize_query(query)
-        if key in self.cache:
-            self.cache.move_to_end(key)
-        self.cache[key] = result
-        while len(self.cache) > self.max_size:
-            self.cache.popitem(last=False)
-
-
 search_cache = SearchCache(max_size=50)
+
+# SearXNG 失败 2 次即熔断（其内部已含 http/wsl 双通道），冷却 60s；
+# DuckDuckGo 作为最后兜底，阈值放宽
+searxng_breaker = CircuitBreaker(threshold=2, cooldown=60.0)
+ddg_breaker = CircuitBreaker(threshold=3, cooldown=30.0)
 
 
 # ============================================================
@@ -129,6 +79,65 @@ def rerank_results(query: str, results: list) -> list:
     return sorted(results, key=score_item, reverse=True)
 
 
+# ============================================================
+# 多数据源故障转移（provider 可注入，便于离线单元测试）
+# ============================================================
+def search_with_fallback(
+    query: str,
+    max_results: int = 5,
+    region: str = "wt-wt",
+    *,
+    searxng_fn: Callable = searxng_search,
+    ddg_fn: Callable = duckduckgo_search,
+    sx_breaker: Optional[CircuitBreaker] = None,
+    duck_breaker: Optional[CircuitBreaker] = None,
+) -> dict:
+    """
+    依次尝试 SearXNG -> DuckDuckGo，任一成功即返回；熔断器跳过不可用数据源。
+
+    返回在统一结构上额外带 provider 字段，标明实际命中的数据源。
+    全部失败时返回带 error 与 providers_tried 的字典（不抛异常，交由上层处理）。
+    """
+    sx_breaker = sx_breaker or searxng_breaker
+    duck_breaker = duck_breaker or ddg_breaker
+    errors: list[str] = []
+
+    # 1) 主数据源：SearXNG
+    if sx_breaker.allow():
+        try:
+            result = searxng_fn(query, max_results=max_results)
+            if isinstance(result, dict) and result.get("results"):
+                sx_breaker.record_success()
+                result["provider"] = f"searxng({result.get('transport', 'http')})"
+                return result
+            sx_breaker.record_failure()
+            errors.append("searxng: 空结果")
+        except Exception as e:
+            sx_breaker.record_failure()
+            errors.append(f"searxng: {type(e).__name__}: {str(e)[:80]}")
+
+    # 2) 兜底：DuckDuckGo
+    if duck_breaker.allow():
+        try:
+            result = ddg_fn(query=query, max_results=max_results, region=region)
+            if isinstance(result, dict) and result.get("results"):
+                duck_breaker.record_success()
+                result["provider"] = "duckduckgo"
+                return result
+            duck_breaker.record_failure()
+            errors.append("duckduckgo: 空结果")
+        except Exception as e:
+            duck_breaker.record_failure()
+            errors.append(f"duckduckgo: {type(e).__name__}: {str(e)[:80]}")
+
+    return {
+        "query": query,
+        "results": [],
+        "error": "所有搜索数据源均不可用",
+        "providers_tried": errors,
+    }
+
+
 @tool
 def internet_search(
     query: str,
@@ -136,24 +145,22 @@ def internet_search(
     max_results: int = 5,
 ):
     """
-    根据用户问题检索互联网公开信息（DuckDuckGo 搜索引擎，免费无需 Key）
+    根据用户问题检索互联网公开信息（优先本地自建 SearXNG 元搜索，自动降级 DuckDuckGo，
+    全程免费、无需付费 API Key）。
 
-    注意：本工具只用于外部公开网页、新闻、学术信息等，不用于查询私有知识库
+    适用：外部公开网页、新闻、技术博客、最新进展、教程文档等非学术信息；
+    查找学术论文/文献请改用 academic_paper_search。
     :param query: 搜索关键词或自然语言问题
     :param region: 地区，wt-wt 表示全球
     :param max_results: 返回的最大结果数
-    :return: 结构化搜索结果（经过重排序优化）
+    :return: 结构化搜索结果（经过重排序优化，含实际命中的 provider）
     """
-    # 当前会话 ID，用于检索次数预算统计
     thread_id = get_thread_context()
 
     # 1. 先查缓存，命中直接返回（缓存命中不消耗检索预算）
     cached = search_cache.get(query)
     if cached is not None:
-        monitor.report_tool(
-            tool_name="语义缓存命中",
-            args={"query": query},
-        )
+        monitor.report_tool(tool_name="语义缓存命中", args={"query": query})
         return cached
 
     # 2. 检索次数预算硬限制：达到上限后不再对外请求，引导模型立即总结
@@ -175,8 +182,9 @@ def internet_search(
             ),
         }
 
-    # 3. 消耗一次预算，调用 DuckDuckGo 搜索（此处才上报一次工具开始事件）
+    # 3. 消耗一次预算，按 SearXNG -> DuckDuckGo 顺序故障转移
     used = search_budget.consume(thread_id)
+    provider_label = "元搜索 SearXNG" if searxng_breaker.allow() else "SearXNG 熔断，DuckDuckGo 兜底"
     monitor.report_tool(
         tool_name="网络搜索工具",
         args={
@@ -184,25 +192,17 @@ def internet_search(
             "max_results": max_results,
             "search_no": used,
             "remaining": search_budget.remaining(thread_id),
+            "preferred": provider_label,
         },
     )
-    try:
-        result = duckduckgo_search(
-            query=query,
-            max_results=max_results,
-            region=region,
-        )
-    except Exception as e:
-        return {"query": query, "results": [], "error": f"搜索失败：{str(e)}"}
+    result = search_with_fallback(query, max_results=max_results, region=region)
 
     # 4. 重排序
-    if isinstance(result, dict) and "results" in result:
+    if isinstance(result, dict) and result.get("results"):
         result["results"] = rerank_results(query, result["results"])
         result["search_no"] = used
         result["remaining_searches"] = search_budget.remaining(thread_id)
-
-    # 5. 仅缓存有结果的成功查询
-    if isinstance(result, dict) and result.get("results"):
+        # 5. 仅缓存有结果的成功查询
         search_cache.set(query, result)
 
     return result
