@@ -25,6 +25,121 @@
 
 ![深度研搜前端首页：任务示例、助手状态和对话式多智能体研究台](docs/images/deepsearch-agent-home.jpg)
 
+## 🧭 本地版本运行指南（2026-09 当前现状，优先阅读）
+
+> 本仓库在上游教程项目基础上做了本地化改造，**实际运行方式与下文“快速开始 / 配套教程”里描述的上游原始设计（Tavily + MySQL + RAGFlow、8000 端口、`frontend/` + pnpm）已有较大差异**。要在本机把系统跑起来，请以本节为准；下文教程章节保留用于对照学习原始设计。
+
+### 三个同级目录
+
+```text
+Agent/
+├── deepsearch-agents/   # 后端：FastAPI + DeepAgents（本目录），端口 8001
+├── frontend-demo/       # 前端：React 19 + Vite + TypeScript，端口 5173
+└── searxng/             # 元搜索：WSL2 Docker 部署的 SearXNG，端口 8888
+```
+
+### 当前能力与技术选型（与上游的差异）
+
+| 能力 | 上游教程 | 本地当前版本 |
+| --- | --- | --- |
+| 大模型 | 通义 Qwen | **DeepSeek**（OpenAI 兼容端点，模型 `deepseek-flash`），见 `.env` |
+| 网络检索 | Tavily（付费 Key） | **自建 SearXNG**（WSL2 Docker，免费聚合）为主，DuckDuckGo(`ddgs`) 为降级；带检索预算（每任务 3 次）与熔断 |
+| 学术检索 | — | **arXiv + OpenAlex + Crossref** 三源并发、跨源去重、按引用/年份排序（OpenAlex 可选配免费 Key） |
+| 数据分析 | MySQL 业务库 | **Python 沙箱**：预装 numpy / pandas / matplotlib / scipy / openpyxl / Pillow，可现场生成图表与数据文件 |
+| 会话记忆 | InMemorySaver | **LangGraph SQLite 检查点**，刷新页面可恢复同一会话 |
+| 私有知识库 | RAGFlow | 代码保留为未接线的休眠 demo，主链路不依赖 |
+| Tavily / MySQL | 使用 | 已从主链路与 `requirements.txt` 移除 |
+
+### 启动步骤（本机）
+
+1. **启动 SearXNG（WSL2 + Docker）**
+
+   在 WSL Ubuntu 内执行：
+
+   ```bash
+   cd <项目根目录>/searxng
+   bash deploy.sh          # 首次部署 / 更新配置后重建
+   ```
+
+   Windows 侧通过 `http://localhost:8888` 访问。后端会自动在“HTTP 直连”与
+   “`wsl_query.sh` WSL 桥接”两种通道间选择（`SEARXNG_TRANSPORT=auto`）。
+
+   > **WSL 空闲关停保活**：WSL2 在最后一个 wsl 会话退出后可能整体关停 distro，
+   > 导致 Docker 与 SearXNG 冷启动（约 10–15 秒）。需要长时间挂机演示时，在 Windows
+   > PowerShell 中运行保活脚本（隐藏常驻，自动拉起 docker 与容器）：
+   >
+   > ```powershell
+   > Start-Process wsl -WindowStyle Hidden -ArgumentList '-d','Ubuntu-20.04','--','bash','<项目根目录>/searxng/keep_wsl_alive.sh'
+   > ```
+   >
+   > 脚本注释里附有“Windows 任务计划登录时自启”的命令，可做开机持久化。
+
+   > **引擎说明（国内网络）**：`searxng/settings.yml` 默认启用 Bing（走 `cn.bing.com`）、
+   > Yandex、搜狗、360；显式禁用了在本机代理 TUN 网络下 DNS 污染 / 超时 / 触发验证码的
+   > Google、DuckDuckGo、Brave、Wikipedia、百度。**配好出网代理后**可在 settings.yml
+   > 重新启用 Google 等引擎并 `bash deploy.sh` 重建。
+
+2. **配置后端环境变量**
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   至少填写 `OPENAI_API_KEY`（DeepSeek Key）；`OPENALEX_API_KEY` 可选（避免共享 IP 触发 429）；
+   SearXNG 相关变量默认值已可用，一般无需修改。
+
+3. **安装 / 同步后端依赖**
+
+   ```bash
+   uv sync        # 或用已建好的 .venv：pip install -r requirements.txt
+   ```
+
+4. **启动后端（端口 8001）**
+
+   ```bash
+   # Windows PowerShell（venv 已建好）
+   .\.venv\Scripts\python.exe -m uvicorn app.api.server:app --host 0.0.0.0 --port 8001
+   # 或：uv run uvicorn app.api.server:app --host 0.0.0.0 --port 8001
+   ```
+
+   接口文档：`http://localhost:8001/docs`。
+
+5. **启动前端（端口 5173）**
+
+   ```bash
+   cd ../frontend-demo
+   npm install        # 首次
+   npm run dev
+   ```
+
+   打开 `http://localhost:5173`。前端 API/WS 地址在 `src/lib/config.ts` 中指向 `localhost:8001`。
+
+### 数据分析沙箱的工程约束
+
+- 单次代码执行 30 秒超时；每个会话 Python 工具调用硬上限 **12 次**（超限强制收敛），
+  避免模型反复探测 / 重复出图陷入死循环。
+- 每次执行结果会回传【工作目录】与【本次产物】文件清单，模型据此确认文件已落盘，无需再
+  自行 `os.listdir` / `os.path.exists` 探测。
+- 图表使用 Agg 后端、坐标轴默认英文以规避中文字体缺失。
+
+### 测试与端到端回归
+
+```bash
+# 后端单元测试（在 deepsearch-agents 目录）
+.\.venv\Scripts\python.exe -m pytest -q
+
+# 端到端回归（需先启动后端与 SearXNG），走真实 HTTP + WebSocket：
+.\.venv\Scripts\python.exe scripts\e2e_run.py 常识直答 "用一句话解释什么是光合作用"
+.\.venv\Scripts\python.exe scripts\e2e_run.py 网络检索 "检索 Python 3.13 的主要新特性，带来源链接"
+.\.venv\Scripts\python.exe scripts\e2e_run.py 数据分析 "用 Python 生成正态分布随机数并画直方图保存为 PNG"
+.\.venv\Scripts\python.exe scripts\e2e_run.py 学术文献 "检索 4D Gaussian Splatting 的代表性论文"
+```
+
+四条标准回归用例：常识直答（0 工具）、网络检索（SearXNG，≤3 次）、数据分析（Python 沙箱出图）、
+学术文献（三源论文）。
+
+---
+
 ## 📖 项目介绍
 
 在真实研究场景里，用户的问题经常不是一句普通问答可以解决的。
