@@ -18,8 +18,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from app.agent.llm import model
 from app.agent.prompts import main_agent_content
+from app.agent.subagents.academic_literature_agent import academic_literature_agent
 from app.agent.subagents.data_analysis_agent import data_analysis_agent
-from app.agent.subagents.knowledge_base_agent import knowledge_base_agent
 from app.agent.subagents.network_search_agent import network_search_agent
 from app.api.context import (
     reset_session_context,
@@ -27,6 +27,7 @@ from app.api.context import (
     set_thread_context,
 )
 from app.api.monitor import monitor
+from app.tools.academic_search_tool import academic_budget
 from app.tools.web_search_tool import search_budget
 
 # 文件类工具由主智能体直接掌握，负责读取上传附件和生成最终交付文档
@@ -58,14 +59,18 @@ async def init_main_agent():
 
     # 主智能体是调度中心：
     # 1. tools 只放最终交付相关的文件工具
-    # 2. subagents 放网络检索、数据分析、私有文档三类助手
+    # 2. subagents 放网络检索、数据分析、学术文献三类助手
     # 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文（持久化到 SQLite）
     main_agent = create_deep_agent(
         model=model,
         system_prompt=main_agent_content["system_prompt"],
         tools=[generate_markdown, convert_md_to_pdf, read_file_content],
         checkpointer=checkpointer,
-        subagents=[data_analysis_agent, network_search_agent, knowledge_base_agent],
+        subagents=[
+            data_analysis_agent,
+            network_search_agent,
+            academic_literature_agent,
+        ],
     )
     print("[MainAgent] 主智能体初始化完成（SQLite 持久化已启用）")
 
@@ -121,8 +126,9 @@ async def run_deep_agent(task_query, session_id):
     session_dir_token = set_session_context(session_dir_str)
     session_id_token = set_thread_context(session_id)
 
-    # 重置本次任务的检索次数预算（每个研究任务独立计 3 次对外检索上限）
+    # 重置本次任务的检索次数预算（网页检索与学术检索各自独立计 3 次对外上限）
     search_budget.reset(session_id)
+    academic_budget.reset(session_id)
 
     # 前端拿到工作目录后，可以展示本次任务生成的 Markdown/PDF 等产物
     monitor.report_session_dir(session_dir_str)

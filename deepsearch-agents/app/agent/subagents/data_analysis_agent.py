@@ -6,6 +6,7 @@ DeepAgents 可识别的字典式子智能体。主智能体后续会根据 descr
 决定是否把数据分析任务分派给它。
 """
 
+from app.agent.llm import fast_model
 from app.agent.prompts import sub_agents_content
 from app.tools.python_exec_tool import execute_python_code
 
@@ -16,4 +17,5 @@ data_analysis_agent = {
     "description": sub_agents_content["data_analysis"]["description"],
     "system_prompt": sub_agents_content["data_analysis"]["system_prompt"],
     "tools": [execute_python_code],
+    "model": fast_model,
 }
