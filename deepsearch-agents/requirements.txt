@@ -34,8 +34,11 @@ aiofiles>=23.0.0            # 异步文件操作
 markdown>=3.5               # Markdown 转 HTML
 reportlab>=4.0.0            # 跨平台 PDF 生成
 
-# --- 可选：RAGFlow 知识库（默认不接线，未配置时不影响运行）---
-ragflow-sdk>=0.1.0          # 知识库 SDK（app/tools/ragflow_tools.py 引用）
+# --- 可选：RAGFlow 知识库（主链路不依赖，默认注释掉）---
+# 代码已改为延迟导入：未安装时 app/ragflow 与 app/tools/ragflow_tools.py 仍可正常
+# import，只有真正调用知识库工具时才返回中文配置提示。需要该能力时取消下一行注释，
+# 并在 .env 配置 RAGFLOW_API_KEY 与 RAGFLOW_API_URL。
+# ragflow-sdk>=0.1.0        # 知识库 SDK（app/tools/ragflow_tools.py 引用）
 
 # --- 基础工具 (Utilities) ---
 PyYAML>=6.0                 # YAML 配置文件解析，用于 prompts.py
@@ -45,3 +48,4 @@ typing-extensions>=4.5.0    # 类型兼容性支持
 
 # --- 开发与测试 ---
 pytest>=8.0.0               # 单元测试
+ruff>=0.6.0                 # 代码检查/格式化（.pre-commit-config.yaml 需要）

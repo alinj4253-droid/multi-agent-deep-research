@@ -72,6 +72,36 @@ export function useDeepAgentSession() {
     setIsCancelling(false)
   }, [])
 
+  /**
+   * 切换到某个历史会话：复用其 thread_id，使 WebSocket 重连到同一会话，
+   * 后续提问会接着这条会话的上下文继续（后端 checkpointer 按 thread_id 续接记忆）。
+   * 只清空当前轮的实时状态，已恢复的历史轮次由调用方自行写入。
+   */
+  const selectThread = useCallback((nextThreadId: string) => {
+    if (!nextThreadId) {
+      return
+    }
+    storeThreadId(nextThreadId)
+    setThreadId(nextThreadId)
+    setEvents([])
+    setFiles([])
+    setSessionPath("")
+    setResult("")
+    setLastError("")
+    setUploadedItems([])
+    uploadedNameSetRef.current.clear()
+    setIsRunning(false)
+    setIsCancelling(false)
+  }, [])
+
+  /**
+   * 接管历史会话的工作目录，使文件轮询立刻开始，
+   * 恢复的会话也能看到之前生成的产物（PDF/PNG/Markdown 等）。
+   */
+  const adoptSessionPath = useCallback((path: string) => {
+    setSessionPath(path || "")
+  }, [])
+
   const refreshFiles = useCallback(async () => {
     if (!sessionPath) {
       return
@@ -319,7 +349,9 @@ export function useDeepAgentSession() {
     result,
     sessionPath,
     stats,
+    adoptSessionPath,
     cancelCurrentTask,
+    selectThread,
     submitTask,
     threadId,
     uploadFiles,

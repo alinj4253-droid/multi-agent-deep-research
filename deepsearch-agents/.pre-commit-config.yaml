@@ -7,18 +7,21 @@ repos:
       - id: check-yaml
       - id: check-toml
 
+  # 本项目用 pip + venv 运行（未安装 uv，也已移除过期的 uv.lock），
+  # 因此这里直接调用 ruff，不再经 `uv run --frozen`。
+  # 启用前请先安装 dev 依赖：pip install -r requirements.txt（含 ruff>=0.6.0）
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff check --fix
-        entry: uv run --frozen --cache-dir .uv-cache ruff check --fix
+        entry: ruff check --fix
         language: system
         types_or: [python, pyi]
         require_serial: true
 
       - id: ruff-format
         name: ruff format
-        entry: uv run --frozen --cache-dir .uv-cache ruff format
+        entry: ruff format
         language: system
         types_or: [python, pyi]
         require_serial: true

@@ -9,6 +9,11 @@ import os
 from pathlib import Path
 from typing import Optional
 
+# app/utils/path_utils.py -> parents[1] 即 app 目录
+# updated/ 与 output/ 都挂在 app 目录下，必须以此为基准解析，
+# 不能用 Path.resolve()（它相对进程 CWD，而 CWD 通常是 deepsearch-agents/）
+_APP_DIR = Path(__file__).resolve().parents[1]
+
 
 def resolve_path(filename: str, session_dir: Optional[str] = None) -> str:
     """
@@ -33,7 +38,8 @@ def resolve_path(filename: str, session_dir: Optional[str] = None) -> str:
     if "updated/" in path_str:
         idx = path_str.find("updated/")
         relative_part = path_str[idx:]
-        return str(Path(relative_part).resolve())
+        # 以 app 目录为基准拼接，避免相对进程 CWD 解析到不存在的位置
+        return str((_APP_DIR / relative_part).resolve())
 
     if not session_dir:
         return str(path.resolve())

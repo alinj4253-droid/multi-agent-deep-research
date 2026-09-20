@@ -100,6 +100,109 @@ class TestMergeAndRank:
         assert ranked[0]["title"] == "Known cites"
 
 
+class TestRecencyFirstRanking:
+    """限定 year_from 时改为「年份优先」，解决问最新进展却返回高被引老论文的问题"""
+
+    def test_year_from_puts_newer_paper_first_despite_lower_citations(self):
+        # 2026 年新论文引用少，2023 年经典引用多；限定年份后新论文必须排前
+        old_classic = _paper("Classic Foundational Work", 2023, 5000, "crossref")
+        new_paper = _paper("Latest 2026 Progress", 2026, 3, "arxiv")
+        ranked = ac.merge_and_rank([old_classic, new_paper], top_k=10, year_from=2024)
+
+        assert ranked[0]["title"] == "Latest 2026 Progress"
+        assert ranked[1]["title"] == "Classic Foundational Work"
+
+    def test_without_year_from_keeps_citation_first(self):
+        # 不传 year_from（综述/发展脉络需求）时保持原有「引用优先」行为
+        old_classic = _paper("Classic Foundational Work", 2023, 5000, "crossref")
+        new_paper = _paper("Latest 2026 Progress", 2026, 3, "arxiv")
+        ranked = ac.merge_and_rank([old_classic, new_paper], top_k=10)
+
+        assert ranked[0]["title"] == "Classic Foundational Work"
+
+    def test_year_from_ties_broken_by_citation(self):
+        # 同年内仍按引用数排序
+        a = _paper("Same Year Low Cite", 2025, 2, "arxiv")
+        b = _paper("Same Year High Cite", 2025, 80, "openalex")
+        ranked = ac.merge_and_rank([a, b], top_k=10, year_from=2024)
+
+        assert ranked[0]["title"] == "Same Year High Cite"
+
+    def test_year_from_descending_by_year(self):
+        papers = [
+            _paper("Y2024", 2024, 10, "arxiv"),
+            _paper("Y2026", 2026, 1, "arxiv"),
+            _paper("Y2025", 2025, 50, "arxiv"),
+        ]
+        ranked = ac.merge_and_rank(papers, top_k=10, year_from=2024)
+
+        assert [p["title"] for p in ranked] == ["Y2026", "Y2025", "Y2024"]
+
+    def test_missing_year_sorted_last_in_recency_mode(self):
+        # 年份缺失的记录在时效优先模式下排最后，避免 None 干扰排序
+        known = _paper("Known Year", 2025, 1, "arxiv")
+        unknown = _paper("Unknown Year", None, 9999, "arxiv")
+        ranked = ac.merge_and_rank([unknown, known], top_k=10, year_from=2024)
+
+        assert ranked[0]["title"] == "Known Year"
+
+    def test_search_passes_year_from_to_ranking(self, monkeypatch):
+        # 端到端：academic_search 必须把 year_from 透传给 merge_and_rank
+        def fake_source(query, max_results=5, year_from=None):
+            return [
+                _paper("Old Highly Cited", 2022, 900, "openalex"),
+                _paper("Fresh Low Cited", 2026, 1, "openalex"),
+            ]
+
+        monkeypatch.setattr(ac, "SOURCE_FUNCS", {"openalex": fake_source})
+        result = ac.academic_search("q", sources=["openalex"], year_from=2025)
+
+        assert result["papers"][0]["title"] == "Fresh Low Cited"
+
+    def test_arxiv_query_adds_date_range_when_year_from(self, monkeypatch):
+        # arXiv 必须在 API 侧加 submittedDate 范围，而非取回后本地过滤
+        captured = {}
+
+        class FakeResponse:
+            text = (
+                '<?xml version="1.0"?>'
+                '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+            )
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, params=None, headers=None, timeout=None):
+            captured["params"] = params
+            return FakeResponse()
+
+        monkeypatch.setattr(ac.requests, "get", fake_get)
+        ac.search_arxiv("gaussian splatting", max_results=5, year_from=2026)
+
+        assert "submittedDate:[202601010000" in captured["params"]["search_query"]
+
+    def test_arxiv_query_omits_date_range_without_year_from(self, monkeypatch):
+        captured = {}
+
+        class FakeResponse:
+            text = (
+                '<?xml version="1.0"?>'
+                '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+            )
+
+            def raise_for_status(self):
+                return None
+
+        def fake_get(url, params=None, headers=None, timeout=None):
+            captured["params"] = params
+            return FakeResponse()
+
+        monkeypatch.setattr(ac.requests, "get", fake_get)
+        ac.search_arxiv("gaussian splatting", max_results=5)
+
+        assert "submittedDate" not in captured["params"]["search_query"]
+
+
 # ============================================================
 # academic_search：聚合容错（注入假数据源，不触网）
 # ============================================================

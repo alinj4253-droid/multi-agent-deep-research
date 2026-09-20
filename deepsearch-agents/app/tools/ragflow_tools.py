@@ -4,19 +4,18 @@ RAGFlow 知识库工具模块
 封装两个给 RAGFlow 子智能体使用的 LangChain 工具：
 get_assistant_list 用于发现可用聊天助手及其绑定知识库，
 create_ask_delete 用于创建临时会话、发起一次问题查询，并在查询后删除会话。
+
+注意：ragflow-sdk 是可选依赖，当前环境未安装。因此本模块**不在导入期** import SDK，
+客户端通过 app.ragflow.rag_config.get_ragflow_client() 延迟获取——主链路不依赖 RAGFlow，
+这样即使 SDK 缺失，本模块仍可被安全 import，只有真正调用工具时才给出友好提示。
 """
 
 import json
 
 from langchain_core.tools import tool
-from ragflow_sdk import RAGFlow
 
 from app.api.monitor import monitor
-from app.ragflow.rag_config import _load_ragflow_env
-
-# 模块级复用 RAGFlow 客户端，避免每次工具调用都重新初始化 SDK 对象
-api_key, base_url = _load_ragflow_env()
-ragflow_client = RAGFlow(api_key=api_key, base_url=base_url)
+from app.ragflow.rag_config import RagflowNotAvailable, get_ragflow_client
 
 
 # @tool 会把函数签名和 docstring 暴露给 DeepAgents，模型据此决定是否调用以及如何填参
@@ -34,6 +33,9 @@ def get_assistant_list() -> str:
     monitor.report_tool(tool_name="ragflow聊天助手列表查询工具：get_assistant_list")
 
     try:
+        # 延迟获取客户端：SDK 未安装或未配置时会抛 RagflowNotAvailable
+        ragflow_client = get_ragflow_client()
+
         # list_chats 查询的是 RAGFlow 的 Chat 层，不是 Dataset 层
         # Chat 负责对外问答，Dataset 只负责承载文档
         chat_list = ragflow_client.list_chats()
@@ -48,6 +50,9 @@ def get_assistant_list() -> str:
 
             count_chat_info += f"助手名称:{chat.name};功能介绍：{chat.description}; 关联的知识库：{'、'.join(dataset_names)} \n"
         return count_chat_info
+    except RagflowNotAvailable as e:
+        # SDK 未安装/未配置属于预期情况，直接返回可读提示，不当成异常噪声
+        return str(e)
     except Exception as e:
         return f"查询助手信息异常，无可用助手,异常信息:{str(e)}"
 
@@ -69,6 +74,9 @@ def create_ask_delete(chat_name, question) -> str:
     )
 
     try:
+        # 延迟获取客户端：SDK 未安装或未配置时会抛 RagflowNotAvailable
+        ragflow_client = get_ragflow_client()
+
         # 先按名称找到 Chat 对象；真正提问时还需要在 Chat 下创建 Session
         chats = ragflow_client.list_chats(name=chat_name)
         use_chat = chats[0]
@@ -111,6 +119,8 @@ def create_ask_delete(chat_name, question) -> str:
         # 临时会话只用于本次工具调用，查询结束后删除，避免 RAGFlow 页面堆积无用会话
         use_chat.delete_sessions(ids=[session.id])
         return result
+    except RagflowNotAvailable as e:
+        return str(e)
     except Exception as e:
         return f"提问失败，错误原因：{str(e)}"
 

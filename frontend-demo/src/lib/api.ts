@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./config"
+import type { ThreadDetailResponse, ThreadListResponse } from "../types"
 
 export interface TaskResponse {
   status: string
@@ -97,4 +98,34 @@ export function getDownloadUrl(path: string): string {
   const url = new URL(apiUrl("/api/download"))
   url.searchParams.set("path", path)
   return url.toString()
+}
+
+/**
+ * 拉取历史会话列表，供左侧边栏渲染。
+ * 后端已排除 e2e-/diag-/verify- 等自动化测试会话。
+ */
+export async function listThreads(limit = 30): Promise<ThreadListResponse> {
+  const url = new URL(apiUrl("/api/threads"))
+  url.searchParams.set("limit", String(limit))
+  return requestJson<ThreadListResponse>(url)
+}
+
+/**
+ * 拉取单个历史会话的多轮问答详情，用于点击侧边栏后恢复对话内容。
+ * 会话不存在时后端返回 404，这里转成 null 让调用方决定如何降级。
+ */
+export async function getThreadDetail(
+  threadId: string
+): Promise<ThreadDetailResponse | null> {
+  try {
+    return await requestJson<ThreadDetailResponse>(
+      apiUrl(`/api/threads/${encodeURIComponent(threadId)}`)
+    )
+  } catch (error) {
+    // 404 表示该会话尚无记录，属于正常情况，不弹错误提示
+    if (error instanceof Error && error.message.includes("404")) {
+      return null
+    }
+    throw error
+  }
 }

@@ -38,8 +38,13 @@ def academic_paper_search(
     某方法/模型的提出工作与后续改进、论文发表年份/作者/引用情况/DOI/PDF。
     不用于检索新闻、官网、教程博客等非学术网页（那种需求请用 internet_search）。
 
-    :param query: 学术主题或论文关键词，例如 "3D Gaussian Splatting dynamic scene"
-    :param year_from: 可选，仅保留该年份及以后的论文，例如 2024
+    :param query: 学术主题或论文关键词，例如 "3D Gaussian Splatting dynamic scene"；
+        只放术语，不要把年份写进检索词（年份用 year_from 表达）
+    :param year_from: 可选，仅保留该年份及以后的论文，例如 2024。
+        **当需求是"最新进展/近期趋势/某一年"时必须传**：用户点明年份就传该年份，
+        只说"最新/近年"就传"当前年份减 2"。传了它排序会改为年份优先（同年内再比引用数），
+        否则按被引次数排序，结果会被更早的经典论文占据。
+        只有"发展脉络/综述/奠基工作"这类跨年代需求才不传。
     :param sources: 可选，限定数据源；默认同时检索 arxiv/openalex/crossref
     :param max_results_per_source: 每个数据源拉取条数，默认 5（Crossref 内部再做相关性+高被引双路）
     :return: 结构化论文列表（标题/作者/年份/摘要/引用数/期刊会议/DOI/PDF链接/来源）

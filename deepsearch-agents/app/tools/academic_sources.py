@@ -113,11 +113,21 @@ def _title_overlap(title: str, query: str) -> int:
 # 三个数据源：各自返回统一结构的论文列表
 # ============================================================
 def search_arxiv(query: str, max_results: int = 5, year_from: Optional[int] = None) -> list[dict]:
-    """检索 arXiv，返回统一结构论文列表"""
+    """
+    检索 arXiv，返回统一结构论文列表
+
+    年份限定直接在 API 侧用 submittedDate 范围过滤，而不是先取 top-N 再本地过滤：
+    后者在指定较新年份时，会因为按相关性排序取回的 N 条里恰好没有新论文而返回空结果。
+    """
     search_query = f"all:{query}"
+    if year_from:
+        # arXiv submittedDate 格式为 YYYYMMDDHHMM；上界给到当前年末，避免漏掉年内新论文
+        search_query += f" AND submittedDate:[{year_from}01010000 TO 999912312359]"
+
     params = {
         "search_query": search_query,
         "start": 0,
+        # API 侧已过滤年份，这里按需求量取回即可；未过滤时多取一些留给后续排序
         "max_results": max_results,
         "sortBy": "relevance",
         "sortOrder": "descending",
@@ -168,6 +178,8 @@ def search_arxiv(query: str, max_results: int = 5, year_from: Optional[int] = No
             }
         )
 
+    # 安全网：submittedDate 范围已在 API 侧过滤，这里再按发表年份兜一次，
+    # 防止 arXiv 对区间语法的解析差异混入更早的论文（year 缺失时保留，不误杀）
     if year_from:
         papers = [p for p in papers if p["year"] is None or p["year"] >= year_from]
     return papers
@@ -354,12 +366,22 @@ def _merge_source(a: str, b: str) -> str:
     return "+".join(seen)
 
 
-def merge_and_rank(papers: list[dict], top_k: int) -> list[dict]:
+def merge_and_rank(
+    papers: list[dict],
+    top_k: int,
+    year_from: Optional[int] = None,
+) -> list[dict]:
     """
     跨源去重并排序
 
     去重：标准化标题相同视为同一篇，优先保留信息更全（有摘要/引用数）的记录；
-    排序：优先高被引，其次年份更新，最后标题更长（信息更完整的代理指标）。
+
+    排序分两种模式：
+    - **未限定年份**（综述/发展脉络类需求）：优先高被引，其次年份更新，
+      最后标题更长（信息更完整的代理指标）——高被引能召回奠基性工作。
+    - **限定了 year_from**（"最新进展/近期趋势"类需求）：**年份优先**，
+      同年内再按引用数排序。因为高被引需要时间积累，若仍按引用数打头，
+      结果必然被更早的经典论文占据，与"最新"的诉求相反。
     """
     merged: dict[str, dict] = {}
     for p in papers:
@@ -379,12 +401,22 @@ def merge_and_rank(papers: list[dict], top_k: int) -> list[dict]:
             else:
                 old["source"] = _merge_source(old["source"], p["source"])
 
-    def sort_key(p):
-        return (
-            p.get("citation_count") if p.get("citation_count") is not None else -1,
-            p.get("year") or 0,
-            len(p.get("title") or ""),
-        )
+    if year_from:
+        # 时效优先：新年份排前，同年内再比引用数
+        def sort_key(p):
+            return (
+                p.get("year") or 0,
+                p.get("citation_count") if p.get("citation_count") is not None else -1,
+                len(p.get("title") or ""),
+            )
+    else:
+        # 影响力优先：高被引排前，同引用再比年份
+        def sort_key(p):
+            return (
+                p.get("citation_count") if p.get("citation_count") is not None else -1,
+                p.get("year") or 0,
+                len(p.get("title") or ""),
+            )
 
     ranked = sorted(merged.values(), key=sort_key, reverse=True)
     return ranked[:top_k]
@@ -429,7 +461,7 @@ def academic_search(
                 sources_used.append(name)
                 all_papers.extend(papers)
 
-    ranked = merge_and_rank(all_papers, top_k=top_k)
+    ranked = merge_and_rank(all_papers, top_k=top_k, year_from=year_from)
 
     # 控制喂给大模型的 token 量：长摘要截断、作者只保留前若干位，
     # 避免一次综述任务（多次工具调用）累积过多上下文导致 LLM 整理缓慢

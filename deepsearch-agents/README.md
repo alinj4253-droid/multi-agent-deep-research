@@ -28,6 +28,11 @@
 ## 🧭 本地版本运行指南（2026-09 当前现状，优先阅读）
 
 > 本仓库在上游教程项目基础上做了本地化改造，**实际运行方式与下文“快速开始 / 配套教程”里描述的上游原始设计（Tavily + MySQL + RAGFlow、8000 端口、`frontend/` + pnpm）已有较大差异**。要在本机把系统跑起来，请以本节为准；下文教程章节保留用于对照学习原始设计。
+>
+> ⚠️ 注意：下文教程涉及的 `frontend/`（上游 Ant Design 前端）与 `docker/`（MySQL 教学库）
+> **已于 2026-09-20 从仓库清理**，两者都不被主链路引用；在用的前端是同级目录 `../frontend-demo/`。
+> 教程中关于 `uv sync` / `uv.lock` 的步骤同样不再适用（本项目用 pip + venv）。
+> 阅读下文时请把它们当作“上游原始设计说明”，不要照着执行。
 
 ### 三个同级目录
 
@@ -91,8 +96,12 @@ Agent/
 3. **安装 / 同步后端依赖**
 
    ```bash
-   uv sync        # 或用已建好的 .venv：pip install -r requirements.txt
+   # 项目实际使用 pip + venv（未安装 uv，uv.lock 已移除）
+   pip install -r requirements.txt
    ```
+
+   > 可选能力：需要 RAGFlow 知识库时，再执行 `pip install ragflow-sdk` 并在 `.env`
+   > 配置 `RAGFLOW_API_KEY` / `RAGFLOW_API_URL`；主链路不依赖它。
 
 4. **启动后端（端口 8001）**
 
@@ -252,33 +261,36 @@ Agent/
 deepsearch-agents/
 ├── app/
 │   ├── agent/
-│   │   ├── subagents/              # 网络搜索、数据库查询、RAGFlow 三个子智能体
+│   │   ├── subagents/              # 网络检索、数据分析、学术文献三个子智能体
 │   │   ├── llm.py                  # OpenAI 兼容模型初始化
 │   │   ├── main_agent.py           # 主智能体组装与 run_deep_agent 执行入口
 │   │   └── prompts.py              # 读取 app/prompt/prompts.yml
 │   ├── api/
 │   │   ├── context.py              # ContextVar 保存 thread_id 和 session_dir
 │   │   ├── monitor.py              # 工具调用、助手调用、结果和异常事件推送
-│   │   └── server.py               # FastAPI 任务、上传、文件、下载、WebSocket 接口
+│   │   ├── threads.py              # 历史会话列表与多轮问答还原（只读 SQLite）
+│   │   └── server.py               # FastAPI 任务、上传、文件、下载、历史会话、WebSocket 接口
 │   ├── prompt/
 │   │   └── prompts.yml             # 主智能体和子智能体提示词配置
-│   ├── ragflow/                    # RAGFlow 配置和基础调用示例
-│   ├── tools/                      # Tavily、MySQL、RAGFlow、文件读取、Markdown、PDF 工具
+│   ├── ragflow/                    # RAGFlow 配置与示例（可选能力，延迟导入）
+│   ├── tools/                      # SearXNG/DuckDuckGo 检索、arXiv/OpenAlex/Crossref
+│   │                               # 学术检索、Python 沙箱、文件读取、Markdown、PDF 工具
 │   ├── utils/                      # 路径解析、Markdown/PDF 底层转换等普通 Python 工具
+│   ├── checkpoints.db              # 会话持久化数据库（AsyncSqliteSaver，历史会话数据源）
 │   ├── output/                     # 运行时生成：每个会话的 Markdown、PDF 等产物
 │   └── updated/                    # 运行时生成：用户上传文件的会话暂存目录
-├── docker/
-│   ├── docker-compose.yaml         # 本地 MySQL 教学环境
-│   └── mysql/mysql.sql             # 药品、库存、销售记录模拟数据
 ├── docs/knowledge_base/            # RAGFlow 知识库示例 PDF
-├── examples/                       # DeepAgents 章节示例脚本
-├── frontend/                       # React + Vite 前端项目
-├── tests/                          # 测试目录
+├── examples/                       # DeepAgents 章节示例脚本（上游教程保留）
+├── scripts/e2e_run.py              # 端到端回归脚本（真实 HTTP + WebSocket）
+├── tests/                          # 测试目录（不依赖外网与大模型）
 ├── .env.example                    # 环境变量示例
 ├── pyproject.toml                  # Python 项目依赖声明
-├── requirements.txt                # 依赖清单
-└── uv.lock                         # uv 锁定文件
+└── requirements.txt                # 依赖清单（ragflow-sdk 为可选，默认注释）
 ```
+
+> 前端不在本目录内，位于同级目录 `../frontend-demo/`（React + Vite + Tailwind，npm 管理）。
+> 原先的 `frontend/`（上游 Ant Design 版）、`docker/`（MySQL 教学库）与 `uv.lock`
+> 已于 2026-09-20 清理：三者均不被主链路引用，且依赖管理实际使用 pip + venv。
 
 ## 🚀 快速开始
 

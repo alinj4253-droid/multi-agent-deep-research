@@ -4,17 +4,14 @@ RAGFlow 知识库 Dataset 操作示例
 演示如何通过 RAGFlow SDK 创建知识库 Dataset、上传本地文档。
 本文件用于理解 RAGFlow 页面背后的 API 调用流程：知识库负责存文档，
 聊天助手负责对外问答，会话负责承接一次具体提问。这里不会直接注册为 Agent 工具。
+
+注意：ragflow-sdk 是可选依赖（当前环境未安装），因此本文件不在导入期 import SDK，
+而是统一通过 app.ragflow.rag_config.get_ragflow_client() 延迟获取客户端。
 """
 
 import os.path
 
-from ragflow_sdk import RAGFlow
-
-from app.ragflow.rag_config import _load_ragflow_env
-
-# RAGFlow SDK 的入口客户端，后续 Dataset、Chat、Session 操作都从这里发起
-api_key, base_url = _load_ragflow_env()
-ragflow_client = RAGFlow(api_key=api_key, base_url=base_url)
+from app.ragflow.rag_config import get_ragflow_client
 
 
 def create_knowledge_base(knowledge_base_name, description):
@@ -26,6 +23,9 @@ def create_knowledge_base(knowledge_base_name, description):
     :param knowledge_base_name: 知识库名称
     :param description: 知识库描述
     """
+    # 延迟获取客户端：SDK 未安装或未配置时会抛出带中文说明的 RagflowNotAvailable
+    ragflow_client = get_ragflow_client()
+
     # RAGFlow SDK 中知识库通常对应 Dataset；Chat 会再绑定一个或多个 Dataset 对外提供问答
     # embedding_model 需要和 RAGFlow 页面中可用的模型供应商配置保持一致
     ds = ragflow_client.create_dataset(
@@ -34,14 +34,6 @@ def create_knowledge_base(knowledge_base_name, description):
         embedding_model="text-embedding-v3@Tongyi-Qianwen",
     )
     print(f"创建知识库成功：{ds},{ds.id}")
-
-
-if __name__ == "__main__":
-    # 本地调试入口：实际使用时换成“电商行业”“金融行业”等有语义的名称和描述
-    create_knowledge_base(
-        "乌萨奇的知识库",
-        "乌萨奇，到！！",
-    )
 
 
 def upload_file_to_knowledge_base(kb_id, file_paths):
@@ -53,6 +45,8 @@ def upload_file_to_knowledge_base(kb_id, file_paths):
     :param kb_id: RAGFlow 知识库 ID，也就是 Dataset ID
     :param file_paths: 本地文件路径列表
     """
+    ragflow_client = get_ragflow_client()
+
     # 先根据知识库 ID 查询 Dataset 对象，确认文件会上传到目标知识库
     datasets = ragflow_client.list_datasets(id=kb_id, page=1, page_size=10)
     dataset = datasets[0]
@@ -70,3 +64,11 @@ def upload_file_to_knowledge_base(kb_id, file_paths):
 
     # 上传完成后，RAGFlow 侧还要执行解析流程，解析成功后才能被 Chat 检索
     dataset.upload_documents(document_list)
+
+
+if __name__ == "__main__":
+    # 本地调试入口：实际使用时换成“电商行业”“金融行业”等有语义的名称和描述
+    create_knowledge_base(
+        "乌萨奇的知识库",
+        "乌萨奇，到！！",
+    )

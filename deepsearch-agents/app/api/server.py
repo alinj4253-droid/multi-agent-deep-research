@@ -7,6 +7,8 @@ WebSocket 长连接。HTTP 接口只做轻量调度，真正的 DeepAgents 执�
 """
 
 import asyncio
+import os
+import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
@@ -23,12 +25,14 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.agent.main_agent import run_deep_agent, init_main_agent, close_main_agent
 from app.api.monitor import manager
+from app.api.threads import get_thread_detail, list_threads
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -70,14 +74,26 @@ output_dir.mkdir(exist_ok=True)
 updated_dir = project_root / "updated"
 updated_dir.mkdir(exist_ok=True)
 
-# 教学项目通常前后端分别本地启动，这里放开跨域以便 Vite 页面直接调用 API
+# 跨域白名单：allow_origins=["*"] 与 allow_credentials=True 在浏览器规范下不生效
+# （带凭证请求不允许通配源），因此改为显式列出本地前端地址，并支持环境变量扩展。
+# 例：CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+_configured = os.getenv("CORS_ORIGINS", "").strip()
+_allowed_origins = (
+    [o.strip() for o in _configured.split(",") if o.strip()] if _configured else _default_origins
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+print(f"[Server] CORS allowed origins: {_allowed_origins}")
 
 
 class TaskRequest(BaseModel):
@@ -165,24 +181,89 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
         files (List[UploadFile]): 文件对象列表。
         thread_id (str): 关联的任务会话 ID。
     """
+    # thread_id 会直接拼进目录名，先做白名单校验，防止 ../ 或绝对路径穿越到 updated 之外
+    if not thread_id or not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", thread_id):
+        raise HTTPException(status_code=400, detail="非法的 thread_id")
+
     # 上传文件先按会话隔离保存，避免不同任务读取到彼此的附件
     target_dir = updated_dir / f"session_{thread_id}"
-    target_dir.mkdir(parents=True, exist_ok=True)
 
-    saved_files = []
-    for file in files:
-        # 只取文件名本身，剥离客户端可能传入的目录/盘符（如 ../、C:\），
-        # 防止路径穿越把文件写到会话目录之外
-        safe_name = Path(file.filename or "").name
-        if not safe_name:
-            raise HTTPException(status_code=400, detail="非法的文件名")
-        file_path = target_dir / safe_name
-        # 直接复制文件流，避免大文件一次性读入内存
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        saved_files.append(safe_name)
+    def _save_all() -> list[str]:
+        """同步落盘：磁盘 IO 放进线程池执行，避免大文件阻塞事件循环"""
+        target_dir.mkdir(parents=True, exist_ok=True)
+        saved: list[str] = []
+        for file in files:
+            # 只取文件名本身，剥离客户端可能传入的目录/盘符（如 ../、C:\），
+            # 防止路径穿越把文件写到会话目录之外
+            safe_name = Path(file.filename or "").name
+            if not safe_name:
+                raise HTTPException(status_code=400, detail="非法的文件名")
+            file_path = target_dir / safe_name
+            # 直接复制文件流，避免大文件一次性读入内存
+            with file_path.open("wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            saved.append(safe_name)
+        return saved
+
+    saved_files = await run_in_threadpool(_save_all)
 
     return {"status": "uploaded", "files": saved_files}
+
+
+@app.get("/api/threads")
+async def get_threads(limit: int = 30, include_test: bool = False):
+    """
+    历史会话列表接口 (Thread History)。
+
+    从 SQLite checkpointer 聚合历史会话，供前端侧边栏展示与一键恢复：
+    - title：该会话首条用户问题（已剥离运行时注入的工作环境指令）
+    - updated_at：最近活动时间（由 UUID6 形式的 checkpoint_id 还原）
+    - steps：该会话的检查点数量，可作为会话复杂度参考
+
+    数据源是主智能体持有的 checkpoints.db，本接口只做只读查询，
+    且放入线程池执行，避免阻塞事件循环或干扰 Agent 写入。
+
+    Args:
+        limit (int): 最多返回条数，1-200
+        include_test (bool): 是否包含 e2e-/diag-/verify- 等自动化测试会话
+    """
+    try:
+        return await run_in_threadpool(
+            list_threads, None, limit, include_test
+        )
+    except Exception as e:
+        # 数据库损坏或锁竞争时降级为空列表，不让侧边栏整个挂掉
+        print(f"[Threads] 读取历史会话失败: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"读取历史会话失败: {e}")
+
+
+@app.get("/api/threads/{thread_id}")
+async def get_thread(thread_id: str):
+    """
+    单个历史会话详情接口 (Thread Detail)。
+
+    前端点击侧边栏某条历史会话时调用，返回该会话已还原的「一问一答」轮次，
+    使刷新页面或切换会话后仍能看到完整历史，而不只是最后一轮。
+
+    还原规则见 app/api/threads.py 的 build_turns：
+    - 只取主线程消息（checkpoint_ns 为空），排除子智能体内部派单与中间回复
+    - 真实用户输入以运行时注入的【工作环境指令】为标记，剥离后作为 query
+    - 每轮答案取下一条真实输入之前最后一条「无 tool_calls 且有正文」的 ai 消息
+
+    Args:
+        thread_id (str): 会话 ID
+    """
+    try:
+        detail = await run_in_threadpool(get_thread_detail, thread_id, None)
+    except Exception as e:
+        print(f"[Threads] 读取会话详情失败: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"读取会话详情失败: {e}")
+
+    # 会话不存在时返回 404，让前端明确区分「没这条会话」与「会话存在但还没内容」
+    if not detail.get("found"):
+        raise HTTPException(status_code=404, detail="会话不存在或尚未产生记录")
+
+    return detail
 
 
 @app.get("/api/download")
@@ -229,33 +310,31 @@ async def list_files(path: str):
     Args:
         path (str): 目标目录的绝对路径 (必须在 output 目录下)。
     """
-    print(f"[DEBUG] 请求文件列表: {path}")
-
     try:
         # 和下载接口保持同一条安全边界：前端只能查看 output 目录内部内容
         abs_path = Path(path).resolve()
         output_abs = output_dir.resolve()
 
         if not abs_path.is_relative_to(output_abs):
-            print(f"[ERROR] 拒绝访问: {abs_path} 不在 {output_abs} 目录下")
+            print(f"[Files] 拒绝访问: {abs_path} 不在 {output_abs} 目录下")
             raise HTTPException(status_code=403, detail="拒绝访问: 只能访问输出目录下的文件")
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] 路径解析失败: {e}")
+        print(f"[Files] 路径解析失败: {e}")
         raise HTTPException(status_code=400, detail=f"路径无效: {e}")
 
     if not abs_path.exists():
         raise HTTPException(status_code=404, detail="目录不存在")
 
-    files = []
-    try:
-        # 递归返回文件元数据，前端据此渲染文件列表并发起下载请求
+    def _scan() -> list[dict]:
+        """同步遍历目录：递归 stat 放进线程池，产物很多时不阻塞事件循环"""
+        collected: list[dict] = []
         for file_path in abs_path.rglob("*"):
             if file_path.is_file():
                 stat = file_path.stat()
-                files.append(
+                collected.append(
                     {
                         "name": file_path.name,
                         "type": "file",
@@ -264,9 +343,12 @@ async def list_files(path: str):
                         "mtime": stat.st_mtime,
                     }
                 )
+        return collected
 
+    try:
+        files = await run_in_threadpool(_scan)
     except Exception as e:
-        print(f"[ERROR] 遍历文件失败: {e}")
+        print(f"[Files] 遍历文件失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
     # 最新生成的文件排在前面，方便用户优先看到本次任务产物
