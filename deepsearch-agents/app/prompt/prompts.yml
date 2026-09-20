@@ -49,7 +49,7 @@ main_agent:
 # 子智能体配置：description 给主智能体判断是否调用，system_prompt 给子智能体约束执行方式
 sub_agents:
   # 网络检索助手：使用本地 SearXNG 元搜索（自动降级 DuckDuckGo）检索公开网页
-  tavily:
+  network_search:
     name: "网络检索助手"
     description: |
       负责检索互联网公开网页信息，当需要查询新闻、最新技术动态、技术博客、官网文档、教程、

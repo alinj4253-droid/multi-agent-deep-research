@@ -182,6 +182,6 @@ async def run_deep_agent(task_query, session_id):
         monitor.report_task_cancelled()
         raise
     except Exception as e:
-        monitor._emit("error", f"执行主智能发生异常信息：{str(e)}")
+        monitor._emit("error", f"执行主智能体时发生异常：{str(e)}")
     finally:
         reset_session_context(session_dir_token, session_id_token)

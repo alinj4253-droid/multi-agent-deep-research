@@ -12,8 +12,6 @@ function getEventStyle(event: MonitorMessage) {
       return { icon: '🔀', label: '子智能体调用' }
     case 'tool_start':
       return { icon: '⚙️', label: '工具执行中' }
-    case 'tool_end':
-      return { icon: '✅', label: '工具完成' }
     case 'task_result':
       return { icon: '📄', label: '任务完成' }
     case 'error':

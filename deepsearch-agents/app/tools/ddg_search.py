@@ -1,8 +1,8 @@
 """
 DuckDuckGo 备用搜索模块
 
-作为 Tavily 的降级搜索引擎：完全免费、无需 API Key。
-返回格式与 Tavily 对齐（query / results / engine），
+作为自建 SearXNG 的降级搜索引擎：完全免费、无需 API Key。
+返回格式与 SearXNG 对齐（query / results / engine），
 使上层的重排序、缓存等逻辑可以无缝复用。
 """
 

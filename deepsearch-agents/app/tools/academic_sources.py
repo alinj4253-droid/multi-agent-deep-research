@@ -204,9 +204,9 @@ def search_openalex(query: str, max_results: int = 5, year_from: Optional[int] =
             if name:
                 authors.append(name)
 
-        venue = ""
-        src = (w.get("primary_location") or {}).get("source") or {}
-        venue = src.get("display_name", "") or ""
+        venue = (
+            (w.get("primary_location") or {}).get("source") or {}
+        ).get("display_name", "") or ""
 
         pdf_url = ""
         best_oa = w.get("open_access") or {}

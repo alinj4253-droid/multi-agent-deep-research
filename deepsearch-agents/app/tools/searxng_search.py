@@ -76,7 +76,6 @@ def _normalize(data: dict, query: str, transport: str) -> dict:
 
 def _search_http(
     query: str,
-    encoded: str,
     max_results: int,
     base_url: str,
     language: str,
@@ -186,13 +185,16 @@ def searxng_search(
             if name == "http":
                 # http 通道探活用较短超时，避免在被劫持环境长时间等待
                 result = _search_http(
-                    query, encoded, max_results, base_url, language,
+                    query, max_results, base_url, language,
                     timeout=min(timeout, 6.0),
                 )
             else:
                 result = _search_via_wsl(
                     query, encoded, max_results, distro, wsl_script, timeout
                 )
+            # SearXNG JSON API 不支持结果条数参数，统一在客户端按 max_results 截断，
+            # 使两个通道返回条数与上层约定一致
+            result["results"] = result["results"][:max_results]
             if not result["results"]:
                 raise RuntimeError(f"{name} 通道返回空结果")
             _last_good["transport"] = name

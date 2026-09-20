@@ -94,6 +94,10 @@ async def execute_python_code(
     session_key = get_thread_context() or session_dir
     used = _session_call_counts.get(session_key, 0) + 1
     _session_call_counts[session_key] = used
+    # 简单防护：字典过大时清理最早的一批（按插入顺序），避免长期运行后内存无限增长
+    if len(_session_call_counts) > 200:
+        for k in list(_session_call_counts.keys())[:100]:
+            _session_call_counts.pop(k, None)
     if used > MAX_CALLS_PER_SESSION:
         return (
             f"【已达工具调用上限】本会话已执行 {MAX_CALLS_PER_SESSION} 次 Python 代码，"
@@ -126,6 +130,15 @@ async def execute_python_code(
             )
         except asyncio.TimeoutError:
             process.kill()
+            # 必须等待子进程真正退出并回收管道，避免残留僵尸进程/资源泄漏
+            try:
+                await process.communicate()
+            except Exception:
+                pass
+            try:
+                os.remove(temp_code_path)
+            except OSError:
+                pass
             return "错误：代码执行超时（超过30秒），已终止执行。请优化代码或减少计算量。"
 
         stdout_text = stdout.decode("utf-8", errors="replace")

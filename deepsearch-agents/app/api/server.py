@@ -11,7 +11,7 @@ import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import uvicorn
 from fastapi import (
@@ -84,7 +84,7 @@ class TaskRequest(BaseModel):
     """前端启动任务时提交的请求体。"""
 
     query: str
-    thread_id: str = None
+    thread_id: Optional[str] = None
 
 
 def _forget_task(thread_id: str, task: asyncio.Task) -> None:
@@ -171,11 +171,16 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
 
     saved_files = []
     for file in files:
-        file_path = target_dir / file.filename
+        # 只取文件名本身，剥离客户端可能传入的目录/盘符（如 ../、C:\），
+        # 防止路径穿越把文件写到会话目录之外
+        safe_name = Path(file.filename or "").name
+        if not safe_name:
+            raise HTTPException(status_code=400, detail="非法的文件名")
+        file_path = target_dir / safe_name
         # 直接复制文件流，避免大文件一次性读入内存
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        saved_files.append(file.filename)
+        saved_files.append(safe_name)
 
     return {"status": "uploaded", "files": saved_files}
 
@@ -198,12 +203,14 @@ async def download_file(path: str):
         output_abs = output_dir.resolve()
 
         if not abs_path.is_relative_to(output_abs):
-            return {"error": "拒绝访问: 只能下载输出目录下的文件"}
+            raise HTTPException(status_code=403, detail="拒绝访问: 只能下载输出目录下的文件")
+    except HTTPException:
+        raise
     except Exception:
-        return {"error": "无效的路径参数"}
+        raise HTTPException(status_code=400, detail="无效的路径参数")
 
     if not abs_path.exists():
-        return {"error": "文件不存在"}
+        raise HTTPException(status_code=404, detail="文件不存在")
 
     # FileResponse 会以流式响应返回文件内容，并让浏览器使用原文件名下载
     return FileResponse(abs_path, filename=abs_path.name)
@@ -231,14 +238,16 @@ async def list_files(path: str):
 
         if not abs_path.is_relative_to(output_abs):
             print(f"[ERROR] 拒绝访问: {abs_path} 不在 {output_abs} 目录下")
-            return {"error": "拒绝访问: 只能访问输出目录下的文件"}
+            raise HTTPException(status_code=403, detail="拒绝访问: 只能访问输出目录下的文件")
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] 路径解析失败: {e}")
-        return {"error": f"路径无效: {e}"}
+        raise HTTPException(status_code=400, detail=f"路径无效: {e}")
 
     if not abs_path.exists():
-        return {"error": "目录不存在"}
+        raise HTTPException(status_code=404, detail="目录不存在")
 
     files = []
     try:
@@ -258,7 +267,7 @@ async def list_files(path: str):
 
     except Exception as e:
         print(f"[ERROR] 遍历文件失败: {e}")
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
     # 最新生成的文件排在前面，方便用户优先看到本次任务产物
     files.sort(key=lambda x: x.get("mtime", 0), reverse=True)
