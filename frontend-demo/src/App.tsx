@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useDeepAgentSession } from './hooks/useDeepAgentSession'
+import { getDownloadUrl } from './lib/api'
 import type { MonitorMessage } from './types'
 
 // 事件图标和颜色映射
@@ -22,6 +23,14 @@ function getEventStyle(event: MonitorMessage) {
     default:
       return { icon: '•', label: event.event || '信息' }
   }
+}
+
+// 文件大小格式化（字节 -> KB/MB）
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 // 统一的 Markdown 渲染组件（支持 GFM：表格、删除线、任务列表、代码块等）
@@ -82,6 +91,8 @@ function MarkdownText({ text }: { text: string }) {
 
 export default function App() {
   const [input, setInput] = useState('')
+  // 已发送的问题原文：输入框在发送瞬间清空，用户气泡需要保留本次问题
+  const [sentQuery, setSentQuery] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 使用真实后端 hook
@@ -106,6 +117,7 @@ export default function App() {
   const handleSend = async () => {
     if (!input.trim() || isRunning) return
     const query = input
+    setSentQuery(query)
     setInput('')
     try {
       await submitTask(query)
@@ -116,6 +128,7 @@ export default function App() {
 
   const handleNewSession = () => {
     resetSession()
+    setSentQuery('')
   }
 
   // 连接状态颜色
@@ -173,7 +186,7 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              私有文档助手
+              学术文献助手
             </div>
           </div>
           {/* 连接状态 */}
@@ -226,9 +239,9 @@ export default function App() {
                 </button>
                 <button
                   className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg text-sm text-gray-600 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                  onClick={() => setInput('结合知识库资料，整理一份 Transformer 视觉模型综述')}
+                  onClick={() => setInput('检索 3D Gaussian Splatting 动态场景重建方向的代表性论文，按年份和引用梳理发展脉络')}
                 >
-                  📚 整理 Transformer 视觉模型综述
+                  📚 检索 3DGS 动态场景方向的代表性论文
                 </button>
               </div>
             </div>
@@ -238,7 +251,7 @@ export default function App() {
               {events.length > 0 && (
                 <div className="flex justify-end">
                   <div className="max-w-[80%] bg-blue-600 text-white px-4 py-3 rounded-2xl rounded-br-sm">
-                    <p className="text-sm leading-relaxed">{input || '研究任务'}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{sentQuery || '研究任务'}</p>
                   </div>
                 </div>
               )}
@@ -281,15 +294,25 @@ export default function App() {
               {result && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <MarkdownText text={result} />
-                  {/* 生成的文件列表 */}
+                  {/* 生成的文件列表（点击可下载） */}
                   {files.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <p className="text-xs text-gray-400 mb-2">生成的文件</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2">
                         {files.map((file, idx) => (
-                          <span key={idx} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
-                            📄 {file.name}
-                          </span>
+                          <a
+                            key={idx}
+                            href={getDownloadUrl(file.path)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 text-xs bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-lg text-gray-700 hover:text-blue-700 transition-colors"
+                            title={`下载 ${file.name}`}
+                          >
+                            <span>📄</span>
+                            <span className="flex-1 truncate">{file.name}</span>
+                            <span className="text-gray-400">{formatFileSize(file.size)}</span>
+                            <span className="text-blue-600">下载</span>
+                          </a>
                         ))}
                       </div>
                     </div>
