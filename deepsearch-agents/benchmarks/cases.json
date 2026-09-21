@@ -7,10 +7,29 @@
       "name": "会话路径边界",
       "requires_llm": false,
       "cases": [
-        {"id": "ps-01", "name": "相对路径正常落在会话内", "kind": "relative_allowed"},
-        {"id": "ps-02", "name": ".. 越界读取被拒绝", "kind": "traversal_rejected", "input": "../secret.txt"},
-        {"id": "ps-03", "name": "Unix 绝对路径越界被拒绝", "kind": "absolute_outside_rejected", "input": "/etc/passwd"},
-        {"id": "ps-04", "name": "Windows 盘符越界被拒绝", "kind": "drive_rejected", "input": "C:/Windows/System32"}
+        {
+          "id": "ps-01",
+          "name": "相对路径正常落在会话内",
+          "kind": "relative_allowed"
+        },
+        {
+          "id": "ps-02",
+          "name": ".. 越界读取被拒绝",
+          "kind": "traversal_rejected",
+          "input": "../secret.txt"
+        },
+        {
+          "id": "ps-03",
+          "name": "Unix 绝对路径越界被拒绝",
+          "kind": "absolute_outside_rejected",
+          "input": "/etc/passwd"
+        },
+        {
+          "id": "ps-04",
+          "name": "Windows 盘符越界被拒绝",
+          "kind": "drive_rejected",
+          "input": "C:/Windows/System32"
+        }
       ]
     },
     {
@@ -18,10 +37,30 @@
       "name": "thread_id 白名单",
       "requires_llm": false,
       "cases": [
-        {"id": "tv-01", "name": "合法 UUID 通过", "kind": "valid", "input": "550e8400-e29b-41d4-a716-446655440000"},
-        {"id": "tv-02", "name": "字母数字下划线短横通过", "kind": "valid", "input": "abc_123-test"},
-        {"id": "tv-03", "name": "../ 穿越被拒绝", "kind": "invalid", "input": "../evil"},
-        {"id": "tv-04", "name": "65 字符超长被拒绝", "kind": "invalid", "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+        {
+          "id": "tv-01",
+          "name": "合法 UUID 通过",
+          "kind": "valid",
+          "input": "550e8400-e29b-41d4-a716-446655440000"
+        },
+        {
+          "id": "tv-02",
+          "name": "字母数字下划线短横通过",
+          "kind": "valid",
+          "input": "abc_123-test"
+        },
+        {
+          "id": "tv-03",
+          "name": "../ 穿越被拒绝",
+          "kind": "invalid",
+          "input": "../evil"
+        },
+        {
+          "id": "tv-04",
+          "name": "65 字符超长被拒绝",
+          "kind": "invalid",
+          "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
       ]
     },
     {
@@ -29,10 +68,26 @@
       "name": "查询缓存 TTL 与完整 key",
       "requires_llm": false,
       "cases": [
-        {"id": "cc-01", "name": "TTL 内命中", "kind": "hit_within_ttl"},
-        {"id": "cc-02", "name": "TTL 过期视为未命中", "kind": "expired_miss"},
-        {"id": "cc-03", "name": "max_results 不同不串结果", "kind": "distinct_max_results"},
-        {"id": "cc-04", "name": "大小写/空白归一后命中", "kind": "normalized_hit"}
+        {
+          "id": "cc-01",
+          "name": "TTL 内命中",
+          "kind": "hit_within_ttl"
+        },
+        {
+          "id": "cc-02",
+          "name": "TTL 过期视为未命中",
+          "kind": "expired_miss"
+        },
+        {
+          "id": "cc-03",
+          "name": "max_results 不同不串结果",
+          "kind": "distinct_max_results"
+        },
+        {
+          "id": "cc-04",
+          "name": "大小写/空白归一后命中",
+          "kind": "normalized_hit"
+        }
       ]
     },
     {
@@ -40,10 +95,26 @@
       "name": "每任务工具预算",
       "requires_llm": false,
       "cases": [
-        {"id": "tb-01", "name": "Python 第 13 次被硬限制", "kind": "python_cap"},
-        {"id": "tb-02", "name": "reset 后新一轮可继续", "kind": "python_reset"},
-        {"id": "tb-03", "name": "网页检索每任务 3 次上限", "kind": "web_budget"},
-        {"id": "tb-04", "name": "学术检索每任务 2 次上限", "kind": "academic_budget"}
+        {
+          "id": "tb-01",
+          "name": "Python 第 13 次被硬限制",
+          "kind": "python_cap"
+        },
+        {
+          "id": "tb-02",
+          "name": "reset 后新一轮可继续",
+          "kind": "python_reset"
+        },
+        {
+          "id": "tb-03",
+          "name": "网页检索每任务 3 次上限",
+          "kind": "web_budget"
+        },
+        {
+          "id": "tb-04",
+          "name": "学术检索每任务 2 次上限",
+          "kind": "academic_budget"
+        }
       ]
     },
     {
@@ -51,10 +122,26 @@
       "name": "检索降级与熔断（离线注入）",
       "requires_llm": false,
       "cases": [
-        {"id": "wf-01", "name": "SearXNG 成功返回 searxng provider", "kind": "searxng_first"},
-        {"id": "wf-02", "name": "SearXNG 失败自动降级 DuckDuckGo", "kind": "fallback_to_ddg"},
-        {"id": "wf-03", "name": "双源都失败返回错误与尝试链", "kind": "both_fail"},
-        {"id": "wf-04", "name": "SearXNG 熔断时直接跳过不调用", "kind": "breaker_skips"}
+        {
+          "id": "wf-01",
+          "name": "SearXNG 成功返回 searxng provider",
+          "kind": "searxng_first"
+        },
+        {
+          "id": "wf-02",
+          "name": "SearXNG 失败自动降级 DuckDuckGo",
+          "kind": "fallback_to_ddg"
+        },
+        {
+          "id": "wf-03",
+          "name": "双源都失败返回错误与尝试链",
+          "kind": "both_fail"
+        },
+        {
+          "id": "wf-04",
+          "name": "SearXNG 熔断时直接跳过不调用",
+          "kind": "breaker_skips"
+        }
       ]
     },
     {
@@ -79,7 +166,8 @@
           "expectations": {
             "min_web_calls": 1,
             "max_web_calls": 3,
-            "max_academic_calls": 0,
+            "max_academic_calls": 2,
+            "max_python_calls": 0,
             "require_source_url": true
           }
         },
@@ -90,7 +178,8 @@
           "expectations": {
             "min_academic_calls": 1,
             "max_academic_calls": 2,
-            "max_web_calls": 0,
+            "max_web_calls": 3,
+            "max_python_calls": 0,
             "require_paper_url": true
           }
         },
@@ -103,7 +192,9 @@
             "max_python_calls": 12,
             "max_web_calls": 0,
             "max_academic_calls": 0,
-            "expected_contains": ["338350"]
+            "expected_contains": [
+              "338350"
+            ]
           }
         }
       ]

@@ -184,7 +184,7 @@ class TestExpectations:
         assert ok == []
         # 没有来源链接 -> 失败
         miss = evaluate_expectations(case, self._passed_summary(answer="无链接", web=2))
-        assert any("链接" in f for f in miss)
+        assert any("来源" in f for f in miss)
         # 超过上限 -> 失败
         over = evaluate_expectations(
             case, self._passed_summary(answer="https://e.com", web=4))
@@ -202,7 +202,22 @@ class TestExpectations:
         ) == []
         miss = evaluate_expectations(
             case, self._passed_summary(answer="无论文链接", academic=1))
-        assert any("链接" in f for f in miss)
+        assert any("来源" in f for f in miss)
+
+    def test_doi_counts_as_source(self):
+        from benchmarks.schemas import evaluate_expectations
+        url_case = {"expectations": {"require_source_url": True}}
+        doi_case = {"expectations": {"require_paper_url": True}}
+        # 只有 DOI（无 http）也算可追溯来源
+        assert evaluate_expectations(
+            url_case, self._passed_summary(answer="见 DOI 10.3390/s25196033", web=1)) == []
+        assert evaluate_expectations(
+            doi_case, self._passed_summary(answer="论文 10.1609/aaai.v40i5.37332", academic=1)
+        ) == []
+        # 既无 URL 也无 DOI -> 失败
+        miss = evaluate_expectations(
+            doi_case, self._passed_summary(answer="只有文字没有任何来源标识", academic=1))
+        assert any("来源" in f for f in miss)
 
     def test_python_expected_contains_and_artifact(self):
         from benchmarks.schemas import evaluate_expectations
@@ -293,3 +308,26 @@ class TestRealHttpWebSocketSmoke:
 
         # 给后台 done_callback 一点收尾时间后，任务登记应被清理
         assert server.task_manager.get(thread_id) is None or not server.task_manager.is_active(thread_id)
+
+
+# ---------- Phase 6：E2E 用例隔离（不复用历史 checkpoint） ----------
+class TestCaseIsolation:
+    def test_thread_id_unique_per_run(self):
+        from benchmarks.e2e_client import build_thread_id
+        case = {"id": "e2e_02"}
+        a = build_thread_id(case, "run-aaaa")
+        b = build_thread_id(case, "run-bbbb")
+        assert a != b
+        assert "e2e-02" in a and a.endswith("run-aaaa")
+
+    def test_thread_ids_distinct_across_cases(self):
+        from benchmarks.e2e_client import build_thread_id
+        ids = {build_thread_id({"id": cid}, "run-x") for cid in
+               ["e2e_01", "e2e_02", "e2e_03", "e2e_04"]}
+        assert len(ids) == 4
+
+    def test_thread_id_has_no_path_unsafe_chars(self):
+        from benchmarks.e2e_client import build_thread_id
+        tid = build_thread_id({"id": "e2e_01"}, "abc12345")
+        # 下划线被规范化为连字符，且不含路径穿越字符
+        assert "_" not in tid and ".." not in tid and "/" not in tid

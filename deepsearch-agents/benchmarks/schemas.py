@@ -17,6 +17,7 @@ e2e runner 通过真实 HTTP + WebSocket 收集到的 monitor_event 事件流后
 - unknown    无法归类（默认值）。
 """
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
 
@@ -218,8 +219,12 @@ def evaluate_expectations(
     _check_counts("python_calls", summary.get("python_calls", 0))
 
     if expectations.get("require_source_url") or expectations.get("require_paper_url"):
-        if "http://" not in answer and "https://" not in answer:
-            failures.append("期望答案包含来源链接(http/https)，但未检测到")
+        # 来源可以是可点击 URL，也可以是学术论文的标准标识 DOI（如 10.3390/s25196033）；
+        # 二者都代表答案给出了可追溯来源，只认 http 会把规范的 DOI 引用误判为缺失。
+        has_url = "http://" in answer or "https://" in answer
+        has_doi = bool(re.search(r"10\.\d{4,9}/\S+", answer))
+        if not has_url and not has_doi:
+            failures.append("期望答案包含可追溯来源(URL 或 DOI)，但未检测到")
 
     if expectations.get("require_artifact") and artifact_count < 1:
         failures.append("期望生成至少 1 个工作区产物，实际为 0")

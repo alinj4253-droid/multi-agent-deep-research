@@ -13,6 +13,7 @@
 import asyncio
 import json
 import time
+import uuid
 from urllib.parse import urlparse
 
 import httpx
@@ -35,21 +36,37 @@ def _ws_url(base_url: str, thread_id: str) -> str:
     return f"{scheme}://{parsed.netloc}/ws/{thread_id}"
 
 
+def build_thread_id(case: dict, run_id: str, thread_prefix: str = "e2e") -> str:
+    """
+    构造用例的 thread_id：每次运行（run_id）唯一，保证用例间 / 多次运行间会话隔离，
+    不与后端历史 checkpoint 串台。
+    """
+    cid = str(case["id"]).replace("_", "-")
+    return f"{thread_prefix}-{cid}-{run_id}"
+
+
 async def run_case(
     case: dict,
     *,
     base_url: str = "http://localhost:8001",
     timeout: float = 180.0,
     thread_prefix: str = "e2e",
+    run_id: "str | None" = None,
 ) -> object:
     """
     对单个用例走一遍真实 HTTP + WebSocket 链路，返回 CaseResult。
 
     任何连接/协议层异常都被收敛成 status=failed 的结果，而不是让整个 runner 崩掉。
+
+    用例隔离：thread_id 必须每次运行都唯一。后端按 thread_id 从 SQLite checkpointer
+    恢复历史会话，若复用固定 id（旧实现的 e2e-<case>），后一个用例会读到上一次运行的
+    对话历史，智能体会“记得”已检索/已计算而跳过工具，导致结果不可复现。因此这里在
+    case id 后追加 run_id（缺省时每次调用都生成随机后缀），保证每个用例都是全新会话。
     """
     import websockets  # 延迟导入：离线跑 pytest 时不要求该依赖在场
 
-    thread_id = f"{thread_prefix}-{case['id']}".replace("_", "-")
+    suffix = run_id or uuid.uuid4().hex[:8]
+    thread_id = build_thread_id(case, suffix, thread_prefix)
     events: list[dict] = []
     workspace_path = ""
     started = time.time()

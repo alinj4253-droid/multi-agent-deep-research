@@ -24,6 +24,7 @@ import datetime
 import json
 import os
 import sys
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -61,10 +62,14 @@ async def main_async(base_url: str, timeout: float) -> int:
         )
         return 2
 
+    # 同一次运行共享一个 run_id，但每个用例的 thread_id 仍不同（含 case id）；
+    # run_id 每次运行都变化，确保不复用历史 checkpoint，用例之间 / 多次运行之间相互隔离。
+    run_id = uuid.uuid4().hex[:8]
+    print(f"[e2e] run_id={run_id}（每个用例使用独立全新会话）")
     results = []
     for case in cases:
         print(f"[e2e] {case['id']} {case['name']} ...", flush=True)
-        r = await run_case(case, base_url=base_url, timeout=timeout)
+        r = await run_case(case, base_url=base_url, timeout=timeout, run_id=run_id)
         print(
             f"      -> {r.status}  latency={r.latency_seconds}s  "
             f"tools={r.tool_calls}(web={r.web_calls},acad={r.academic_calls},"
@@ -88,6 +93,7 @@ async def main_async(base_url: str, timeout: float) -> int:
             "cases_sha256": meta.get("cases_sha256", ""),
             "base_url": base_url,
             "timeout_seconds": timeout,
+            "run_id": run_id,
         },
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
     )
