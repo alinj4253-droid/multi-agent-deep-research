@@ -165,6 +165,24 @@ class TestPureHelpers:
         assert th._checkpoint_time(str(uuid.uuid4())) is None   # version 4
         assert th._checkpoint_time("not-a-uuid") is None
 
+    def test_checkpoint_time_uuid6_ordering_is_monotonic(self):
+        # 回归：不能依赖 Python 3.14 才支持的 uuid.UUID.time 解码 v6；
+        # 直接按 v6 位布局还原，两个不同时间戳必须保持先后顺序且不抛异常。
+        earlier = th._checkpoint_time(make_uuid6(1_700_000_000))
+        later = th._checkpoint_time(make_uuid6(1_700_000_000 + 3600))
+        assert earlier is not None and later is not None
+        assert later > earlier
+
+    def test_checkpoint_time_does_not_use_stdlib_time_property(self, monkeypatch):
+        # 显式锁死：即便 stdlib 的 .time 不支持 v6（3.11/3.12 行为），解码仍要成功
+        cid = make_uuid6(1_700_000_000)
+
+        def _raising_time(self):
+            raise ValueError("UUID.time only supports versions 1, 2")
+
+        monkeypatch.setattr(uuid.UUID, "time", property(_raising_time))
+        assert th._checkpoint_time(cid) is not None
+
 
 # ============================================================
 # list_threads

@@ -55,8 +55,19 @@ def _checkpoint_time(checkpoint_id: str) -> Optional[datetime]:
     if parsed.version != 6:
         return None
 
-    # uuid.time 对 version 6 已正确还原为 60-bit 时间戳（单位 100ns，历元 1582-10-15）
-    unix_100ns = parsed.time - _UUID6_UNIX_OFFSET
+    # 直接按 RFC 9562 UUIDv6 位布局还原 60-bit 时间戳（单位 100ns，历元 1582-10-15）。
+    # 不能用 stdlib 的 parsed.time：Python 3.14 才支持对 version 6 解码 .time，
+    # 3.11/3.12 上会抛 ValueError，导致历史会话接口在干净 CI 环境（Python 3.11）直接失败。
+    try:
+        timestamp_100ns = (
+            (parsed.time_low << 28)
+            | (parsed.time_mid << 12)
+            | (parsed.time_hi_version & 0x0FFF)
+        )
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+    unix_100ns = timestamp_100ns - _UUID6_UNIX_OFFSET
     if unix_100ns < 0:
         return None
 
