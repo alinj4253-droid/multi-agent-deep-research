@@ -30,6 +30,8 @@ from app.api.monitor import monitor
 from app.tools.academic_search_tool import academic_budget
 from app.tools.python_exec_tool import reset_session_call_count
 from app.tools.web_search_tool import search_budget
+from app.utils.validators import InvalidThreadIdError, validate_thread_id
+from app.agent.result import AgentRunResult
 
 # 文件类工具由主智能体直接掌握，负责读取上传附件和生成最终交付文档
 from app.tools.markdown_tools import generate_markdown
@@ -96,6 +98,13 @@ async def run_deep_agent(task_query, session_id):
     if main_agent is None:
         raise RuntimeError("主智能体尚未初始化，请先调用 init_main_agent()")
 
+    # Defense-in-depth：API 层已校验 thread_id，但 Runtime 也可能被 CLI / 测试 /
+    # Benchmark / 其他 service 直接调用，因此核心层再校验一次，不假设上游一定安全。
+    try:
+        validate_thread_id(session_id)
+    except InvalidThreadIdError as e:
+        raise ValueError(f"非法的 session_id: {e}") from e
+
     print(f"[MainAgent] 开始执行会话，session_id={session_id}")
 
     # 每个会话独立使用 output/session_{session_id}，避免不同用户的产物互相覆盖
@@ -153,6 +162,7 @@ async def run_deep_agent(task_query, session_id):
     4. 若存在上传文件，请先分析内容
     """
 
+    final_answer = ""
     try:
         async for chunk in main_agent.astream(
             {"messages": [{"role": "user", "content": task_query + path_instruction}]},
@@ -177,15 +187,37 @@ async def run_deep_agent(task_query, session_id):
                                         },
                                     )
                         elif last_msg.content:
+                            final_answer = last_msg.content
                             print(
                                 f"主智能体执行结果，最终结果：{last_msg.content[:100]}"
                             )
                             monitor.report_task_result(last_msg.content)
 
+        # 汇总本次会话工作区产物（排除临时执行脚本与缓存目录）
+        artifacts: list[str] = []
+        try:
+            for full in sorted(session_dir.iterdir()):
+                if full.name.startswith("_exec_") or full.name == "__pycache__":
+                    continue
+                if full.is_file():
+                    artifacts.append(full.name)
+        except OSError:
+            artifacts = []
+
+        return AgentRunResult(
+            session_id=session_id,
+            final_answer=final_answer,
+            status="completed",
+            artifacts=artifacts,
+        )
     except asyncio.CancelledError:
+        # 取消语义必须继续向上传播，让后台 Task 可被判定为 cancelled
         monitor.report_task_cancelled()
         raise
     except Exception as e:
+        # 先推送错误事件，再重新抛出：后台 Task / Benchmark / 测试才能据此判定失败，
+        # 而不是把内部失败伪装成正常 return。
         monitor._emit("error", f"执行主智能体时发生异常：{str(e)}")
+        raise
     finally:
         reset_session_context(session_dir_token, session_id_token)

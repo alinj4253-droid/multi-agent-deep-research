@@ -65,6 +65,13 @@ class TaskManager:
 
     def _forget(self, thread_id: str, task: asyncio.Task) -> None:
         """done_callback：仅当登记的仍是自己时才移除，避免误删后启动的新任务。"""
+        # 消费异常，避免后台任务以异常/取消结束时 asyncio 打印
+        # "Task exception was never retrieved"（错误事件已由 monitor 推送）。
+        if not task.cancelled():
+            try:
+                task.exception()
+            except (asyncio.CancelledError, Exception):
+                pass
         if self._tasks.get(thread_id) is task:
             self._tasks.pop(thread_id, None)
 
