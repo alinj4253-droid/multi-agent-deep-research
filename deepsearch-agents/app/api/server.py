@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from app.agent.main_agent import run_deep_agent, init_main_agent, close_main_agent
 from app.api.monitor import manager
 from app.api.threads import get_thread_detail, list_threads
+from app.utils.validators import InvalidThreadIdError, validate_thread_id
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -122,6 +123,11 @@ async def run_task(request: TaskRequest):
     HTTP 请求只负责创建后台协程并立即返回，后续执行轨迹、子智能体调用和最终
     答案都会由 monitor 通过 `/ws/{thread_id}` 推送给同一会话的前端。
     """
+    if request.thread_id is not None:
+        try:
+            validate_thread_id(request.thread_id)
+        except InvalidThreadIdError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     thread_id = request.thread_id or str(uuid.uuid4())
 
     # 同一个 thread_id 只保留一个活跃任务，新任务会先取消旧任务，避免并发写同一会话目录
@@ -139,6 +145,10 @@ async def run_task(request: TaskRequest):
 
 @app.post("/api/task/{thread_id}/cancel")
 async def cancel_task(thread_id: str):
+    try:
+        validate_thread_id(thread_id)
+    except InvalidThreadIdError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     """
     取消指定 thread_id 对应的后台 Agent 任务。
 
@@ -181,9 +191,11 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
         files (List[UploadFile]): 文件对象列表。
         thread_id (str): 关联的任务会话 ID。
     """
-    # thread_id 会直接拼进目录名，先做白名单校验，防止 ../ 或绝对路径穿越到 updated 之外
-    if not thread_id or not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", thread_id):
-        raise HTTPException(status_code=400, detail="非法的 thread_id")
+    # thread_id 会直接拼进目录名，统一走白名单校验，防止 ../ 或绝对路径穿越
+    try:
+        validate_thread_id(thread_id)
+    except InvalidThreadIdError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # 上传文件先按会话隔离保存，避免不同任务读取到彼此的附件
     target_dir = updated_dir / f"session_{thread_id}"
@@ -239,6 +251,10 @@ async def get_threads(limit: int = 30, include_test: bool = False):
 
 @app.get("/api/threads/{thread_id}")
 async def get_thread(thread_id: str):
+    try:
+        validate_thread_id(thread_id)
+    except InvalidThreadIdError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     """
     单个历史会话详情接口 (Thread Detail)。
 
@@ -367,6 +383,11 @@ async def websocket_endpoint(websocket: WebSocket, thread_id: str):
     receive_text 用于接收前端心跳，避免连接空闲断开。
     """
     print(f"会话向我们发起了请求，要求建立连接：{thread_id} 对应：{websocket}")
+    try:
+        validate_thread_id(thread_id)
+    except InvalidThreadIdError:
+        await websocket.close(code=1008)
+        return
 
     # 连接建立后立即按 thread_id 注册，monitor 后续才能把事件定向推给当前页面
     await manager.connect(websocket, thread_id)

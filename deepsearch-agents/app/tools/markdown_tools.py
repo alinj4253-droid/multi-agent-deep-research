@@ -15,7 +15,7 @@ from langchain_core.tools import tool
 
 from app.api.context import get_session_context
 from app.api.monitor import monitor
-from app.utils.path_utils import resolve_path
+from app.utils.path_utils import PathEscapeError, resolve_session_path
 
 
 @tool
@@ -46,8 +46,11 @@ def generate_markdown(
         full_input_path = str(Path(path) / filename)
     else:
         full_input_path = filename
-    full_path_str = resolve_path(full_input_path, session_dir)
-    file_path = Path(full_path_str)
+    try:
+        file_path = resolve_session_path(full_input_path, session_dir)
+    except PathEscapeError as e:
+        print(f"[MarkdownTool] 路径越界: {e}")
+        return f"生成Markdown文件失败: {e}"
 
     parent_dir = file_path.parent
 

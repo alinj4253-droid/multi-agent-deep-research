@@ -1,8 +1,11 @@
 """
 文件路径解析工具
 
-负责把模型或工具返回的虚拟路径、上传文件路径和相对路径统一转换为本地绝对路径
-后续文件读取、Markdown 生成和 PDF 转换工具都可以复用这里的解析规则
+负责把模型或工具返回的虚拟路径、上传文件路径和相对路径统一转换为本地绝对路径。
+
+- resolve_path: 兼容旧行为，含 updated/ 缓存目录解析（供历史逻辑与测试使用）。
+- resolve_session_path: 严格的 Session Workspace 边界解析，
+  Agent 的读/写工具统一使用它，确保任何路径都不能离开当前会话工作区。
 """
 
 import os
@@ -29,7 +32,7 @@ def resolve_path(filename: str, session_dir: Optional[str] = None) -> str:
     # 大模型常返回 /workspace、/mnt/data 这类沙箱路径，本地项目需要先剥离虚拟前缀
     for prefix in ["/workspace", "/mnt/data", "/home/user"]:
         if path_str.startswith(prefix):
-            cleaned = path_str[len(prefix) :].lstrip("/")
+            cleaned = path_str[len(prefix):].lstrip("/")
             path = Path(cleaned)
             path_str = str(path).replace("\\", "/")
             break
@@ -74,6 +77,61 @@ def resolve_path(filename: str, session_dir: Optional[str] = None) -> str:
         return str(session_path / path.name)
 
     return str(session_path / path)
+
+
+class PathEscapeError(ValueError):
+    """Agent 文件操作试图离开会话工作区时抛出"""
+
+
+def resolve_session_path(input_path, session_root, must_exist=False):
+    """
+    把模型/工具传入的路径严格解析到会话工作区之内。
+
+    与 resolve_path 的区别：这里强制建立 Session Workspace 文件路径边界——
+    无论传入相对路径还是绝对路径，resolve 之后必须仍位于 session_root 之内；
+    凡是指向会话目录之外的（多层 ../、/etc/passwd、Windows 盘符路径、
+    updated/ 缓存目录、符号链接逃逸等）一律拒绝，而不是"绝对路径就放行"。
+
+    :param input_path: 模型/用户传入的路径或文件名
+    :param session_root: 当前会话工作区根目录（output/session_{thread_id}）
+    :param must_exist: True 时要求最终路径已经存在
+    :return: resolve 后的绝对路径 Path 对象
+    :raises PathEscapeError: 解析结果不在 session_root 之内
+    """
+    if not input_path or not isinstance(input_path, str):
+        raise PathEscapeError("路径为空")
+
+    root = Path(session_root).resolve()
+    cleaned = input_path.replace("\\", "/")
+
+    # 剥离上游教程里的虚拟工作区前缀（/workspace、/mnt/data、/home/user）
+    for prefix in ("/workspace", "/mnt/data", "/home/user"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):].lstrip("/")
+            break
+
+    has_drive = len(cleaned) >= 2 and cleaned[1:2] == ":"
+    candidate = Path(cleaned)
+
+    if candidate.is_absolute() or has_drive:
+        # Windows 下 "/xxx" 无盘符，按会话内相对路径处理
+        if os.name == "nt" and cleaned.startswith("/") and not has_drive:
+            candidate = root / cleaned.lstrip("/")
+    else:
+        candidate = root / candidate
+
+    resolved = candidate.resolve()
+
+    # 核心边界：resolve 之后必须仍在会话根之内（可抵御 ../ 与符号链接逃逸）
+    if not resolved.is_relative_to(root):
+        raise PathEscapeError(
+            "拒绝访问：路径 " + input_path + " 解析后离开了会话工作区 " + str(root)
+        )
+
+    if must_exist and not resolved.exists():
+        raise PathEscapeError("路径不存在：" + str(resolved))
+
+    return resolved
 
 
 def _fix_nested_session_path(
