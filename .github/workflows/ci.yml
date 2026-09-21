@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-lock.txt
       - name: Unit tests
         run: python -m pytest -q
       - name: Offline benchmark

@@ -1,0 +1,135 @@
+# ============================================================================
+# requirements-lock.txt —— 后端依赖的可复现锁定版本（供 CI 使用）
+#
+# 生成方式（务必在“干净的 Python 3.11”环境中生成，禁止用 Windows + Python 3.14
+# 的 pip freeze 直接覆盖 Linux CI）：
+#   python3.11 -m venv .venv311
+#   .venv311/Scripts/python -m pip install --upgrade pip
+#   .venv311/Scripts/python -m pip install -r requirements.txt
+#   .venv311/Scripts/python -m pytest -q                 # 必须全绿
+#   .venv311/Scripts/python benchmarks/run_benchmark.py  # 离线回归必须全过
+#   .venv311/Scripts/python -m pip freeze > requirements-lock.txt
+#
+# 本锁在 Python 3.11.9 干净虚拟环境、pytest 全部通过、离线工程回归 20/20 通过后生成。
+# 日常开发仍使用 requirements.txt（宽松约束，便于升级）；GitHub Actions 安装本锁文件，
+# 保证“今天”和“以后”安装到的依赖版本一致、CI 可复现。
+# 说明：该 freeze 在 Windows Python 3.11 生成，未包含仅 Unix 的 uvloop（uvicorn 会
+# 自动回退到 asyncio 事件循环，不影响测试与运行）；其余包均提供 manylinux cp311 wheel。
+# ============================================================================
+
+aiofiles==25.1.0
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+aiosqlite==0.22.1
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anthropic==1.7.0
+anyio==4.15.1
+attrs==26.1.0
+bracex==3.0.1
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+click==8.5.0
+colorama==0.4.6
+contourpy==1.3.3
+cryptography==50.0.1
+cycler==0.12.1
+ddgs==9.16.0
+deepagents==0.5.7
+distro==1.9.0
+docstring_parser==0.18.0
+et_xmlfile==2.0.0
+fastapi==0.141.1
+filetype==1.2.0
+fonttools==4.65.0
+frozenlist==1.8.0
+google-auth==2.58.0
+google-genai==2.24.0
+greenlet==3.5.6
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.13.0
+httptools==0.8.0
+httpx==0.28.1
+httpx-sse==0.4.3
+httpx2==2.13.0
+idna==3.20
+iniconfig==2.3.0
+jiter==0.17.0
+jsonpatch==1.33
+jsonpointer==3.1.1
+kiwisolver==1.5.1
+langchain==1.2.17
+langchain-anthropic==1.7.2
+langchain-classic==1.0.8
+langchain-community==0.4.2
+langchain-core==1.6.3
+langchain-google-genai==4.4.0
+langchain-openai==1.2.1
+langchain-protocol==0.0.19
+langchain-text-splitters==1.1.2
+langgraph==1.1.10
+langgraph-checkpoint==4.2.0
+langgraph-checkpoint-sqlite==3.1.1
+langgraph-prebuilt==1.0.13
+langgraph-sdk==0.3.15
+langsmith==0.13.0
+lxml==6.1.3
+Markdown==3.10.3
+matplotlib==3.11.2
+multidict==6.9.0
+numpy==2.4.6
+openai==2.54.0
+openpyxl==3.1.5
+orjson==3.12.0
+ormsgpack==1.12.2
+packaging==26.3
+pandas==3.0.6
+pillow==12.3.0
+pluggy==1.6.0
+primp==2.0.1
+propcache==0.5.4
+pyasn1==0.6.4
+pyasn1_modules==0.4.2
+pycparser==3.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+pydantic_core==2.46.5
+Pygments==2.21.0
+pyparsing==3.3.3
+pypdf==6.19.0
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+python-docx==1.2.0
+python-dotenv==1.2.2
+python-multipart==0.0.32
+PyYAML==6.0.3
+regex==2026.9.10
+reportlab==5.0.1
+requests==2.34.2
+requests-toolbelt==1.0.0
+ruff==0.16.8
+scipy==1.17.1
+six==1.17.0
+sniffio==1.3.1
+SQLAlchemy==2.0.54
+sqlite-vec==0.1.9
+starlette==1.6.0
+tenacity==9.1.4
+tiktoken==0.14.0
+tqdm==4.70.1
+truststore==0.10.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2026.4
+urllib3==2.8.0
+uuid_utils==0.17.1
+uvicorn==0.53.0
+watchfiles==1.2.0
+wcmatch==11.0.1
+websockets==16.1.1
+xxhash==4.0.1
+yarl==1.25.1
+zstandard==0.25.0
