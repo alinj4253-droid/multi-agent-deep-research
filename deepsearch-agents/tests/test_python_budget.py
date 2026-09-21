@@ -39,7 +39,7 @@ def run_async(coro):
 
 
 def test_thirteenth_call_blocked(session_env):
-    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_SESSION
+    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_TASK
     result = run_async(
         pet.execute_python_code.ainvoke(
             {"code": "print(1)", "description": "should be blocked"}
@@ -49,7 +49,7 @@ def test_thirteenth_call_blocked(session_env):
 
 
 def test_reset_allows_new_task(session_env):
-    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_SESSION
+    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_TASK
     # 新一轮任务开始时 reset
     pet.reset_session_call_count("budget_thread")
     result = run_async(
@@ -62,7 +62,7 @@ def test_reset_allows_new_task(session_env):
 
 
 def test_other_thread_not_affected_by_reset(session_env):
-    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_SESSION
+    pet._session_call_counts["budget_thread"] = pet.MAX_CALLS_PER_TASK
     pet._session_call_counts["other_thread"] = 5
     pet.reset_session_call_count("budget_thread")
     assert pet._session_call_counts.get("other_thread") == 5
@@ -75,4 +75,4 @@ def test_other_thread_not_affected_by_reset(session_env):
 
 
 def test_module_caps_constant():
-    assert pet.MAX_CALLS_PER_SESSION == 12
+    assert pet.MAX_CALLS_PER_TASK == 12

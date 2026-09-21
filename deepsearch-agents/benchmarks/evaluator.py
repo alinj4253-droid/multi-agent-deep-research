@@ -121,7 +121,7 @@ def eval_tool_budget(cases):
                 async def _run():
                     sd = set_session_context(tempfile.mkdtemp())
                     sid = set_thread_context("bench_py")
-                    pet._session_call_counts["bench_py"] = pet.MAX_CALLS_PER_SESSION
+                    pet._session_call_counts["bench_py"] = pet.MAX_CALLS_PER_TASK
                     r = await pet.execute_python_code.ainvoke({"code": "print(1)", "description": "x"})
                     reset_session_context(sd, sid)
                     pet.reset_session_call_count()
@@ -137,7 +137,7 @@ def eval_tool_budget(cases):
                 async def _run():
                     sd = set_session_context(tempfile.mkdtemp())
                     sid = set_thread_context("bench_py2")
-                    pet._session_call_counts["bench_py2"] = pet.MAX_CALLS_PER_SESSION
+                    pet._session_call_counts["bench_py2"] = pet.MAX_CALLS_PER_TASK
                     pet.reset_session_call_count("bench_py2")
                     r = await pet.execute_python_code.ainvoke({"code": "print(2+2)", "description": "x"})
                     reset_session_context(sd, sid)
