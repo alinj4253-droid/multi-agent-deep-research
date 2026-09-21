@@ -1,0 +1,72 @@
+{
+  "version": "1.0",
+  "description": "Multi-Agent Deep Research 可复现评测用例集。offline 类别不依赖网络/LLM，直接对真实代码做断言；requires_llm 类别需要 DEEPSEEK API 与 SearXNG，仅在 --e2e 模式下运行，无凭据时记为 skipped，绝不手填数字。",
+  "categories": [
+    {
+      "id": "path_safety",
+      "name": "会话路径边界",
+      "requires_llm": false,
+      "cases": [
+        {"id": "ps-01", "name": "相对路径正常落在会话内", "kind": "relative_allowed"},
+        {"id": "ps-02", "name": ".. 越界读取被拒绝", "kind": "traversal_rejected", "input": "../secret.txt"},
+        {"id": "ps-03", "name": "Unix 绝对路径越界被拒绝", "kind": "absolute_outside_rejected", "input": "/etc/passwd"},
+        {"id": "ps-04", "name": "Windows 盘符越界被拒绝", "kind": "drive_rejected", "input": "C:/Windows/System32"}
+      ]
+    },
+    {
+      "id": "thread_validator",
+      "name": "thread_id 白名单",
+      "requires_llm": false,
+      "cases": [
+        {"id": "tv-01", "name": "合法 UUID 通过", "kind": "valid", "input": "550e8400-e29b-41d4-a716-446655440000"},
+        {"id": "tv-02", "name": "字母数字下划线短横通过", "kind": "valid", "input": "abc_123-test"},
+        {"id": "tv-03", "name": "../ 穿越被拒绝", "kind": "invalid", "input": "../evil"},
+        {"id": "tv-04", "name": "65 字符超长被拒绝", "kind": "invalid", "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+      ]
+    },
+    {
+      "id": "cache_ttl",
+      "name": "查询缓存 TTL 与完整 key",
+      "requires_llm": false,
+      "cases": [
+        {"id": "cc-01", "name": "TTL 内命中", "kind": "hit_within_ttl"},
+        {"id": "cc-02", "name": "TTL 过期视为未命中", "kind": "expired_miss"},
+        {"id": "cc-03", "name": "max_results 不同不串结果", "kind": "distinct_max_results"},
+        {"id": "cc-04", "name": "大小写/空白归一后命中", "kind": "normalized_hit"}
+      ]
+    },
+    {
+      "id": "tool_budget",
+      "name": "每任务工具预算",
+      "requires_llm": false,
+      "cases": [
+        {"id": "tb-01", "name": "Python 第 13 次被硬限制", "kind": "python_cap"},
+        {"id": "tb-02", "name": "reset 后新一轮可继续", "kind": "python_reset"},
+        {"id": "tb-03", "name": "网页检索每任务 3 次上限", "kind": "web_budget"},
+        {"id": "tb-04", "name": "学术检索每任务 2 次上限", "kind": "academic_budget"}
+      ]
+    },
+    {
+      "id": "web_fallback",
+      "name": "检索降级与熔断（离线注入）",
+      "requires_llm": false,
+      "cases": [
+        {"id": "wf-01", "name": "SearXNG 成功返回 searxng provider", "kind": "searxng_first"},
+        {"id": "wf-02", "name": "SearXNG 失败自动降级 DuckDuckGo", "kind": "fallback_to_ddg"},
+        {"id": "wf-03", "name": "双源都失败返回错误与尝试链", "kind": "both_fail"},
+        {"id": "wf-04", "name": "SearXNG 熔断时直接跳过不调用", "kind": "breaker_skips"}
+      ]
+    },
+    {
+      "id": "e2e_llm",
+      "name": "端到端任务（需 LLM + SearXNG）",
+      "requires_llm": true,
+      "cases": [
+        {"id": "e2e-01", "name": "常识直答不依赖外部检索", "query": "用一句话说明什么是 Transformer。"},
+        {"id": "e2e-02", "name": "网页检索任务带来源链接", "query": "检索 2026 年自动驾驶数据融合方向的最新进展，给出带来源的要点。"},
+        {"id": "e2e-03", "name": "学术检索任务返回论文条目", "query": "检索 2025-2026 年 4D Gaussian Splatting 的代表性论文。"},
+        {"id": "e2e-04", "name": "数据分析任务可现场计算", "query": "计算前 100 个正整数的平方和。"}
+      ]
+    }
+  ]
+}
