@@ -73,8 +73,9 @@ def load_e2e_cases() -> list[dict]:
 async def main_async(base_url: str, timeout: float) -> int:
     cases = load_e2e_cases()
     if not cases:
+        # 0 个用例属于配置错误，按失败处理（exit 1），避免被误判为“全部通过”
         print("cases.json 中没有 e2e_llm 用例。")
-        return 2
+        return 1
 
     print(f"探测后端 {base_url} ...")
     if not await wait_for_server(base_url, timeout=10.0):
@@ -119,10 +120,12 @@ async def main_async(base_url: str, timeout: float) -> int:
         f"=== E2E Benchmark ===\n"
         f"  total={s['total']} pass={s['passed']} fail={s['failed']} "
         f"cancel={s['cancelled']} timeout={s['timeout']} unknown={s['unknown']} "
-        f"pass_rate={s['pass_rate']}%\n  git={report['git_commit']} model={report['model']}\n"
+        f"pass_rate={s['pass_rate']}% success={s['success']}\n"
+        f"  git={report['git_commit']} model={report['model']}\n"
         f"  results -> {out}"
     )
-    return 0 if s["failed"] == 0 and s["timeout"] == 0 and s["passed"] > 0 else 1
+    # 只有全部用例 passed（failed/cancelled/timeout/unknown 全为 0）才算成功
+    return 0 if s["success"] else 1
 
 
 def main():

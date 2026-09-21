@@ -8,10 +8,24 @@ e2e runner 通过真实 HTTP + WebSocket 收集到的 monitor_event 事件流后
 - 最终答案、错误信息、工作区产物数。
 
 归类器对未知事件类型、缺字段、乱序都保持健壮，不因为多一个前端新事件就崩。
+
+状态枚举（CaseResult.status / summary 计数统一使用，禁止 completed/ok/done 等近义词混用）：
+- passed     跑到 task_result 且最终答案非空；
+- failed     收到 error 事件，或终态答案为空；
+- cancelled  收到 task_cancelled 且没有最终结果；
+- timeout    在限定时间内没有收到任何终态；
+- unknown    无法归类（默认值）。
 """
 
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
+
+# ---- 统一用例状态枚举（Benchmark 层）----
+STATUS_PASSED = "passed"
+STATUS_FAILED = "failed"
+STATUS_CANCELLED = "cancelled"
+STATUS_TIMEOUT = "timeout"
+STATUS_UNKNOWN = "unknown"
 
 # 终态事件
 EVENT_RESULT = "task_result"
@@ -28,8 +42,8 @@ PYTHON_TOOL = "Python代码执行工具"
 class CaseResult:
     case_id: str
     name: str
-    # completed / failed / cancelled / timeout / unknown
-    status: str = "unknown"
+    # passed / failed / cancelled / timeout / unknown
+    status: str = STATUS_UNKNOWN
     success: bool = False
     latency_seconds: Optional[float] = None
     tool_calls: int = 0
@@ -63,7 +77,7 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     :return: dict，含 status / final_answer / 各类计数 / errors
     """
-    status = "unknown"
+    status = STATUS_UNKNOWN
     final_answer = ""
     errors: list[str] = []
     tool_calls = web_calls = academic_calls = python_calls = 0
@@ -89,15 +103,15 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
             elif tool_name == PYTHON_TOOL:
                 python_calls += 1
         elif name == EVENT_RESULT:
-            status = "completed"
+            status = STATUS_PASSED
             final_answer = str(data.get("result") or "")
         elif name == EVENT_CANCELLED:
             # 取消后若又出现最终结果，以最终结果为准；否则标记 cancelled
-            if status != "completed":
-                status = "cancelled"
+            if status != STATUS_PASSED:
+                status = STATUS_CANCELLED
         elif name == EVENT_ERROR:
-            if status != "completed":
-                status = "failed"
+            if status != STATUS_PASSED:
+                status = STATUS_FAILED
             msg = str(ev.get("message") or data or "任务执行异常")
             errors.append(msg)
 
@@ -120,26 +134,37 @@ def build_case_result(
     timed_out: bool = False,
     artifact_count: int = 0,
 ) -> CaseResult:
-    """结合事件归类与超时/产物信息，构造单条用例结果。"""
+    """
+    结合事件归类与超时/产物信息，构造单条用例结果。
+
+    成功（passed）必须收到 task_result 终态且最终答案非空；
+    终态答案为空、error、cancel、timeout、无终态分别归为 failed/cancelled/timeout/unknown，
+    success 一律 False。
+    """
     summary = summarize_events(events)
     status = summary["status"]
-    if timed_out and status not in ("completed",):
-        status = "timeout"
+    errors = list(summary["errors"])
 
-    success = status == "completed" and bool(summary["final_answer"].strip())
+    if timed_out and status != STATUS_PASSED:
+        status = STATUS_TIMEOUT
+
+    # 终态是 task_result 但答案为空，视为失败（不能把空结果当成功）
+    if status == STATUS_PASSED and not summary["final_answer"].strip():
+        status = STATUS_FAILED
+        errors.append("收到 task_result 但最终答案为空")
 
     return CaseResult(
         case_id=str(case.get("id", "")),
         name=str(case.get("name", "")),
         status=status,
-        success=success,
+        success=status == STATUS_PASSED,
         latency_seconds=round(latency_seconds, 2),
         tool_calls=summary["tool_calls"],
         web_calls=summary["web_calls"],
         academic_calls=summary["academic_calls"],
         python_calls=summary["python_calls"],
         final_answer=summary["final_answer"],
-        errors=summary["errors"],
+        errors=errors,
         artifact_count=artifact_count,
         event_count=len(events or []),
     )
@@ -154,13 +179,19 @@ def build_report(
     config: Optional[dict] = None,
     generated_at: str = "",
 ) -> dict[str, Any]:
-    """聚合所有用例为可落盘的 benchmark 报告 dict。"""
+    """
+    聚合所有用例为可落盘的 benchmark 报告 dict。
+
+    成功判定非常严格：只有 total>0 且 passed==total（failed/cancelled/timeout/unknown
+    全部为 0）时 summary.success 才为 True，runner 据此决定退出码。
+    """
     total = len(results)
-    passed = sum(1 for r in results if r.success)
-    failed = sum(1 for r in results if r.status == "failed")
-    cancelled = sum(1 for r in results if r.status == "cancelled")
-    timeout = sum(1 for r in results if r.status == "timeout")
-    unknown = total - passed - failed - cancelled - timeout
+    passed = sum(1 for r in results if r.status == STATUS_PASSED)
+    failed = sum(1 for r in results if r.status == STATUS_FAILED)
+    cancelled = sum(1 for r in results if r.status == STATUS_CANCELLED)
+    timeout = sum(1 for r in results if r.status == STATUS_TIMEOUT)
+    unknown = sum(1 for r in results if r.status == STATUS_UNKNOWN)
+    success = total > 0 and passed == total
 
     return {
         "generated_at": generated_at,
@@ -176,6 +207,7 @@ def build_report(
             "timeout": timeout,
             "unknown": unknown,
             "pass_rate": round(passed / total * 100, 1) if total else 0.0,
+            "success": success,
         },
         "cases": [asdict(r) for r in results],
     }

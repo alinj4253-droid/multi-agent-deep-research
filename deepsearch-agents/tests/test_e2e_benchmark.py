@@ -36,7 +36,7 @@ class TestSummarizeEvents:
             _ev("task_result", data={"result": "最终研究结论"}),
         ]
         r = summarize_events(events)
-        assert r["status"] == "completed"
+        assert r["status"] == "passed"
         assert r["tool_calls"] == 3
         assert r["web_calls"] == 1
         assert r["academic_calls"] == 1
@@ -67,13 +67,14 @@ class TestSummarizeEvents:
             _ev("tool_start", data=None),
             _ev("task_result", data="bad-data"),
         ])
-        # 最后一条 task_result 数据畸形但事件有效，状态仍可判为 completed（答案为空）
-        assert r["status"] == "completed"
+        # 最后一条 task_result 数据畸形但事件有效，事件层判为 passed（答案为空）；
+        # 空答案会在 build_case_result 层改判 failed。
+        assert r["status"] == "passed"
         assert r["final_answer"] == ""
 
     def test_result_after_cancelled_wins(self):
         r = summarize_events([_ev("task_cancelled"), _ev("task_result", data={"result": "x"})])
-        assert r["status"] == "completed"
+        assert r["status"] == "passed"
 
 
 class TestBuildCaseResult:
@@ -81,7 +82,7 @@ class TestBuildCaseResult:
         case = {"id": "c1", "name": "n"}
         ok = build_case_result(case, [_ev("task_result", data={"result": "有内容"})],
                                latency_seconds=1.2)
-        assert ok.success and ok.status == "completed"
+        assert ok.success and ok.status == "passed"
         empty = build_case_result(case, [_ev("task_result", data={"result": "  "})],
                                   latency_seconds=0.1)
         assert empty.success is False
@@ -92,10 +93,14 @@ class TestBuildCaseResult:
         assert r.status == "timeout" and r.success is False
 
 
+def _passed_case(cid="a"):
+    return build_case_result({"id": cid}, [_ev("task_result", data={"result": "ok"})], 1)
+
+
 class TestBuildReport:
     def test_aggregation(self):
         results = [
-            build_case_result({"id": "a"}, [_ev("task_result", data={"result": "x"})], 1),
+            _passed_case("a"),
             build_case_result({"id": "b"}, [_ev("error", message="e")], 1),
             build_case_result({"id": "c"}, [_ev("task_cancelled")], 1),
             build_case_result({"id": "d"}, [], 1, timed_out=True),
@@ -107,6 +112,41 @@ class TestBuildReport:
         assert s["cancelled"] == 1 and s["timeout"] == 1
         assert report["git_commit"] == "abc123"
         assert len(report["cases"]) == 4
+        # 存在 failed/cancelled/timeout 时整体不算成功
+        assert s["success"] is False
+
+    def test_all_passed_is_success(self):
+        results = [_passed_case("a"), _passed_case("b"), _passed_case("c")]
+        s = build_report(results)["summary"]
+        assert s["success"] is True
+        assert s["passed"] == 3 and s["total"] == 3
+
+    @pytest.mark.parametrize(
+        "results",
+        [
+            # 1 failed
+            lambda: [_passed_case("a"),
+                     build_case_result({"id": "b"}, [_ev("error", message="e")], 1)],
+            # 1 cancelled
+            lambda: [_passed_case("a"),
+                     build_case_result({"id": "b"}, [_ev("task_cancelled")], 1)],
+            # 1 timeout
+            lambda: [_passed_case("a"),
+                     build_case_result({"id": "b"}, [], 1, timed_out=True)],
+            # 1 unknown（无终态且未超时）
+            lambda: [_passed_case("a"),
+                     build_case_result({"id": "b"}, [_ev("tool_start", data={})], 1)],
+        ],
+    )
+    def test_any_non_passed_status_fails(self, results):
+        s = build_report(results())["summary"]
+        assert s["success"] is False
+        assert s["passed"] < s["total"]
+
+    def test_empty_case_set_is_not_success(self):
+        s = build_report([])["summary"]
+        assert s["total"] == 0 and s["passed"] == 0
+        assert s["success"] is False
 
 
 # ---------- 真实 HTTP + WebSocket 链路（fake agent，不调 LLM） ----------
