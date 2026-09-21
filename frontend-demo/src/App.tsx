@@ -199,7 +199,7 @@ export default function App() {
   const [turns, setTurns] = useState<ChatTurn[]>([])
   // 历史会话列表与加载态
   const [threads, setThreads] = useState<ThreadSummary[]>([])
-  const [threadsLoading, setThreadsLoading] = useState(false)
+  const [threadsLoading, setThreadsLoading] = useState(true)
   const [threadsError, setThreadsError] = useState('')
   const [restoring, setRestoring] = useState(false)
   // 恢复历史会话产物时可能出现的提示
@@ -246,10 +246,27 @@ export default function App() {
     }
   }, [])
 
-  // 首次挂载加载历史会话
+  // 首次挂载加载历史会话：与后端接口这一“外部系统”同步，setState 均在 await 之后，
+  // 并用 cancelled 守卫避免卸载后写入。手动刷新仍走 loadThreads（事件处理器）。
   useEffect(() => {
-    loadThreads()
-  }, [loadThreads])
+    let cancelled = false
+    listThreads(40)
+      .then((response) => {
+        if (!cancelled) {
+          setThreads(response.threads || [])
+          setThreadsLoading(false)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setThreadsError(error instanceof Error ? error.message : '历史会话加载失败')
+          setThreadsLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // 把 hook 的实时状态同步进对应轮次（不影响其他历史轮次）
   useEffect(() => {

@@ -214,23 +214,40 @@ export function useDeepAgentSession() {
     }
   }, [clearSocketTimers, threadId])
 
+  // 会话产物轮询：与后端文件接口这一“外部系统”同步；所有 setState 都发生在 await 之后，
+  // 并用 disposed 守卫避免卸载后写入。
   useEffect(() => {
     if (!sessionPath) {
       return
     }
 
-    refreshFiles().catch((error: unknown) => {
-      setLastError(error instanceof Error ? error.message : "文件列表刷新失败")
-    })
+    let disposed = false
 
-    const timer = window.setInterval(() => {
-      refreshFiles().catch((error: unknown) => {
-        setLastError(error instanceof Error ? error.message : "文件列表刷新失败")
-      })
-    }, isRunning ? 2500 : 6000)
+    const poll = async () => {
+      try {
+        const response = await listSessionFiles(sessionPath)
+        if (disposed) {
+          return
+        }
+        if (response.error) {
+          throw new Error(response.error)
+        }
+        setFiles(response.files || [])
+      } catch (error) {
+        if (!disposed) {
+          setLastError(error instanceof Error ? error.message : "文件列表刷新失败")
+        }
+      }
+    }
 
-    return () => window.clearInterval(timer)
-  }, [isRunning, refreshFiles, sessionPath])
+    void poll()
+    const timer = window.setInterval(() => void poll(), isRunning ? 2500 : 6000)
+
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [isRunning, sessionPath])
 
   const submitTask = useCallback(
     async (query: string) => {
