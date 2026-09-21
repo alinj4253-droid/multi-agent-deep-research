@@ -98,11 +98,24 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, Any]:
                 tool_name = data["tool_name"]
             elif isinstance(args.get("tool_name"), str):
                 tool_name = args["tool_name"]
-            if tool_name == WEB_TOOL:
-                web_calls += 1
-            elif tool_name == ACADEMIC_TOOL:
+            # 归类说明：
+            # - 进程内 TTL 缓存命中时上报“学术检索缓存命中 / 查询缓存命中”，这仍然代表
+            #   智能体把任务路由给了对应专家并取回数据，计入对应工具类型；
+            # - “次数已达上限 / 预算已用完”是空操作提示，不计为一次真实检索。
+            is_academic = (
+                tool_name == ACADEMIC_TOOL
+                or ("学术" in tool_name and "上限" not in tool_name)
+            )
+            is_web = (
+                tool_name == WEB_TOOL
+                or ("查询缓存" in tool_name)
+                or ("网络搜索" in tool_name and "预算" not in tool_name)
+            )
+            if is_academic:
                 academic_calls += 1
-            elif tool_name == PYTHON_TOOL:
+            elif is_web:
+                web_calls += 1
+            elif tool_name == PYTHON_TOOL or "Python" in tool_name:
                 python_calls += 1
         elif name == EVENT_RESULT:
             status = STATUS_PASSED

@@ -72,6 +72,24 @@ class TestSummarizeEvents:
         assert r["status"] == "passed"
         assert r["final_answer"] == ""
 
+    def test_cache_hit_still_counts_as_route(self):
+        # 缓存命中仍代表走了对应专家路由，应计入 web/academic
+        r = summarize_events([
+            _ev("tool_start", data={"tool_name": "学术检索缓存命中"}),
+            _ev("tool_start", data={"tool_name": "查询缓存命中"}),
+            _ev("task_result", data={"result": "x"}),
+        ])
+        assert r["academic_calls"] == 1 and r["web_calls"] == 1
+
+    def test_budget_exhausted_is_not_a_retrieval(self):
+        # “预算已用完/次数已达上限”是空操作提示，不计为真实检索
+        r = summarize_events([
+            _ev("tool_start", data={"tool_name": "学术检索次数已达上限"}),
+            _ev("tool_start", data={"tool_name": "检索预算已用完，开始整理结果"}),
+            _ev("task_result", data={"result": "x"}),
+        ])
+        assert r["academic_calls"] == 0 and r["web_calls"] == 0
+
     def test_result_after_cancelled_wins(self):
         r = summarize_events([_ev("task_cancelled"), _ev("task_result", data={"result": "x"})])
         assert r["status"] == "passed"
