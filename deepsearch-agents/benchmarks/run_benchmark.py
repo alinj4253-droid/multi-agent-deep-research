@@ -2,14 +2,16 @@
 Benchmark 运行入口。
 
 用法：
-    python benchmarks/run_benchmark.py            # 仅离线确定性评测（无需网络/LLM）
-    python benchmarks/run_benchmark.py --e2e     # 额外跑需要 DEEPSEEK API + SearXNG 的端到端用例
+    python benchmarks/run_benchmark.py            # 仅离线确定性评测（无需网络/LLM，CI 必跑）
 
+真实端到端（HTTP + WebSocket + LLM）评测请改用独立入口：
+    python benchmarks/run_e2e_benchmark.py       # 需先启动后端并配置 DEEPSEEK_API_KEY
+
+本脚本中 e2e_llm 类别一律记为 skipped，绝不在这里直接调用 run_deep_agent。
 结果写入 benchmarks/results/YYYY-MM-DD.json。所有指标均为真实运行结果，不手填。
 """
 
 import json
-import os
 import sys
 import time
 import datetime
@@ -32,7 +34,7 @@ OFFLINE_EVALUATORS = {
 }
 
 
-def main(run_e2e: bool = False):
+def main():
     cases = json.loads(CASES.read_text(encoding="utf-8"))
     started = time.time()
     records = []
@@ -43,22 +45,13 @@ def main(run_e2e: bool = False):
         passed = failed = skipped = 0
 
         if cid == "e2e_llm":
-            can_run = run_e2e and bool(os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY"))
+            # 真实端到端在 run_e2e_benchmark.py（HTTP+WebSocket）执行；离线 runner 只标记 skip
             for c in cat["cases"]:
-                if can_run:
-                    # 端到端用例通过真实 run_deep_agent 验证；需要 SearXNG 与 LLM。
-                    # 此处保留接入点，按实际返回结构判定（详见 README）。
-                    ok = _run_e2e_case(c)
-                    status = "pass" if ok else "fail"
-                else:
-                    status = "skip"
-                if status == "pass":
-                    passed += 1
-                elif status == "fail":
-                    failed += 1
-                else:
-                    skipped += 1
-                records.append({"category": cid, "id": c["id"], "name": c["name"], "status": status})
+                skipped += 1
+                records.append({
+                    "category": cid, "id": c["id"], "name": c["name"],
+                    "status": "skip", "note": "use run_e2e_benchmark.py for real e2e",
+                })
         else:
             for case_id, ok in OFFLINE_EVALUATORS[cid](cat["cases"]):
                 status = "pass" if ok else "fail"
@@ -76,7 +69,7 @@ def main(run_e2e: bool = False):
     summary = {
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "duration_seconds": round(time.time() - started, 3),
-        "mode": "e2e" if run_e2e else "offline",
+        "mode": "offline",
         "total": total,
         "passed": sum(v["passed"] for v in per_category.values()),
         "failed": sum(v["failed"] for v in per_category.values()),
@@ -106,28 +99,6 @@ def main(run_e2e: bool = False):
     sys.exit(1 if offline_failed else 0)
 
 
-def _run_e2e_case(case):
-    """真实端到端执行（需要 API 与 SearXNG）。接入点保留，按返回结构判定。"""
-    import asyncio
-    from app.agent.main_agent import init_main_agent, run_deep_agent, close_main_agent
-
-    async def _go():
-        await init_main_agent()
-        sid = "bench-" + case["id"]
-        collected = []
-        async for event in run_deep_agent(case["query"], sid):
-            collected.append(event)
-        await close_main_agent()
-        text = json.dumps(collected, ensure_ascii=False)
-        # 客观判据：确实跑完且非空
-        return len(text) > 0
-
-    try:
-        return asyncio.run(_go())
-    except Exception as e:  # noqa
-        print(f"  e2e {case['id']} error: {e}")
-        return False
-
 
 if __name__ == "__main__":
-    main(run_e2e="--e2e" in sys.argv)
+    main()
