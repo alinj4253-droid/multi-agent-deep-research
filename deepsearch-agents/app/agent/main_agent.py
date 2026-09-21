@@ -193,6 +193,12 @@ async def run_deep_agent(task_query, session_id):
                             )
                             monitor.report_task_result(last_msg.content)
 
+        # Final Answer Contract：graph 正常结束但没有产出任何非空最终回答时，
+        # 绝不标记为 completed——否则 Runtime 误判成功、WebSocket 不发 task_result，
+        # 前端 / E2E 会一直等待。这里 raise 会被下方 except Exception 捕获，
+        # 先 emit error 事件再向上抛出，复用既有失败传播与 TaskManager 的 failed 判定。
+        if not final_answer or not final_answer.strip():
+            raise RuntimeError("Agent finished without a final answer")
         # 汇总本次会话工作区产物（排除临时执行脚本与缓存目录）
         artifacts: list[str] = []
         try:

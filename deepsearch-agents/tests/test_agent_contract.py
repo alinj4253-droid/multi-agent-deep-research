@@ -126,3 +126,47 @@ def test_runtime_rejects_invalid_session_id(workdir, monkeypatch):
 
     with pytest.raises(ValueError):
         _run(run_empty())
+
+
+def test_empty_final_answer_is_not_completed(workdir, monkeypatch):
+    """graph 正常结束但最终回答为空字符串：必须判失败而不是 completed。"""
+
+    async def run():
+        # model 节点产出空内容、无 tool_calls，final_answer 保持空串
+        chunk = {"model": {"messages": [AIMessage(content="")]}}
+        monkeypatch.setattr(ma, "main_agent", FakeAgent([chunk]))
+        await ma.run_deep_agent("q", "thread_empty")
+
+    with pytest.raises(RuntimeError, match="without a final answer"):
+        _run(run())
+
+
+def test_whitespace_only_final_answer_is_not_completed(workdir, monkeypatch):
+    """只有空白字符的最终回答同样不能标记为 completed。"""
+
+    async def run():
+        chunk = {"model": {"messages": [AIMessage(content="   \n\t ")]}}
+        monkeypatch.setattr(ma, "main_agent", FakeAgent([chunk]))
+        await ma.run_deep_agent("q", "thread_blank")
+
+    with pytest.raises(RuntimeError, match="without a final answer"):
+        _run(run())
+
+
+def test_empty_answer_emits_error_event(workdir, monkeypatch):
+    """空答案失败时 monitor 必须发出 error 事件（前端/E2E 才能终止等待）。"""
+    events = []
+
+    def record(event_type, message, data=None):
+        events.append(event_type)
+
+    monkeypatch.setattr(ma.monitor, "_emit", record)
+
+    async def run():
+        chunk = {"model": {"messages": [AIMessage(content="")]}}
+        monkeypatch.setattr(ma, "main_agent", FakeAgent([chunk]))
+        await ma.run_deep_agent("q", "thread_empty_event")
+
+    with pytest.raises(RuntimeError):
+        _run(run())
+    assert "error" in events
