@@ -77,8 +77,8 @@
 
 ### 1. 启动 SearXNG（WSL2 + Docker）
 ```bash
-# 在 WSL Ubuntu 内
-cd <项目根目录>/searxng
+# 在 WSL Ubuntu 内，进入项目 searxng/ 目录后执行
+cd searxng
 bash deploy.sh            # 首次部署 / 改完 settings.yml 后重建
 ```
 Windows 侧通过 `http://localhost:8888` 访问。长时间挂机演示可用
@@ -116,10 +116,10 @@ LLM_FAST_MODEL=deepseek-flash
 # 学术检索：OpenAlex 免费 Key（可选，避免共享 IP 触发 429）
 OPENALEX_API_KEY=
 
-# SearXNG（默认值即可，一般无需修改）
+# SearXNG（默认值即可，一般无需修改；WSL 桥接脚本默认自动定位到项目根 searxng/ 下）
 SEARXNG_URL=http://localhost:8888
 WSL_DISTRO=Ubuntu-20.04
-SEARXNG_WSL_SCRIPT=<项目根目录>/searxng/wsl_query.sh
+# SEARXNG_WSL_SCRIPT=D:/path/to/your/repo/searxng/wsl_query.sh   # 仅自定义位置时需要
 SEARXNG_TRANSPORT=auto
 
 # 私有文档助手为可选项：不配置 RAGFlow 时该助手以空壳方式占位（当前主链路未接线）
@@ -153,18 +153,33 @@ cd deepsearch-agents
 │   │   │   ├── ddg_search.py            # DuckDuckGo 降级检索
 │   │   │   ├── web_search_tool.py       # 网络搜索工具（预算 + 缓存 + 熔断 + 重排）
 │   │   │   ├── academic_sources.py      # arXiv/OpenAlex/Crossref 三源
-│   │   │   ├── academic_search_tool.py  # 学术检索工具
+│   │   │   ├── academic_search_tool.py  # 学术检索工具（支持 year_from 时效限定）
 │   │   │   ├── python_exec_tool.py      # Python 沙箱（超时/产物清单/调用上限）
-│   │   │   └── ragflow_tools.py         # RAGFlow 知识库（可选，未接线）
+│   │   │   ├── upload_file_read_tool.py # 上传附件读取（md/docx/pdf/xlsx/csv）
+│   │   │   └── ragflow_tools.py         # RAGFlow 知识库（可选，延迟导入，未接线）
 │   │   ├── api/                # API 层（FastAPI + WebSocket + 文件上传下载）
-│   │   └── prompt/             # 提示词配置 prompts.yml
+│   │   │   ├── server.py       # 任务/取消/上传/文件/下载/历史会话/WebSocket 接口
+│   │   │   ├── threads.py      # 历史会话列表与多轮问答还原（只读 SQLite）
+│   │   │   ├── monitor.py      # 事件推送（tool/assistant/result/error）
+│   │   │   └── context.py      # ContextVar 保存 thread_id 与 session_dir
+│   │   ├── ragflow/            # RAGFlow 配置与示例（可选能力）
+│   │   ├── utils/              # 路径解析、Markdown/PDF 转换
+│   │   ├── prompt/             # 提示词配置 prompts.yml
+│   │   ├── checkpoints.db      # 会话持久化数据库（AsyncSqliteSaver）
+│   │   ├── output/             # 运行时生成：各会话产物
+│   │   └── updated/            # 运行时生成：上传文件会话暂存
+│   ├── docs/images/            # README 引用的截图与架构图
 │   ├── scripts/e2e_run.py      # 端到端回归脚本
-│   ├── tests/                  # 单元测试（缓存/重排序/预算/学术源/降级）
-│   └── pyproject.toml
-├── frontend-demo/              # 前端项目
-│   └── src/（App.tsx、hooks/ WebSocket hook、lib/ API 封装）
+│   ├── tests/                  # 单元测试（检索治理/学术源/会话还原/接口层）
+│   ├── pyproject.toml
+│   └── requirements.txt
+├── frontend-demo/              # 前端项目（React 19 + Vite + TS + Tailwind）
+│   └── src/（App.tsx 多轮对话与历史侧边栏、hooks/ WebSocket hook、lib/ API 封装、types.ts）
 ├── searxng/                    # 自建 SearXNG（docker-compose、settings、部署/保活脚本）
 ├── 改造方案.md                  # 详细改造设计文档（含落地修订记录）
+├── 审查记录与待决策问题.md        # 第一轮全量审查记录
+├── 第二轮修复记录与待决策问题.md  # 第二轮修复记录（6 项反馈问题 + 清理）
+├── 项目总结报告.md               # 系统架构与完整流程逻辑链
 └── README.md
 ```
 

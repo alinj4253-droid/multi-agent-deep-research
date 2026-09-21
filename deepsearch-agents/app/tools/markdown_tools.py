@@ -72,8 +72,12 @@ def generate_markdown(
 
 if __name__ == "__main__":
     # 本地调试入口：直接运行本文件可验证 Markdown 写入和路径解析效果
+    # 产物写入系统临时目录，避免在项目内留下测试文件
+    import tempfile
+
+    _debug_dir = tempfile.mkdtemp(prefix="md_tool_debug_")
     def get_session_context():
-        return "./examples/test_docs"
+        return _debug_dir
 
     test_content = "# 测试文档\n这是 Markdown 生成工具的本地测试内容"
     test_filename = "测试文件"

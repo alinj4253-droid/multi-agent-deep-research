@@ -8,7 +8,8 @@ general:
   instance_name: "DeepSearch SearXNG"
 
 server:
-  # 私钥（本地部署用，随机 64 位十六进制；如需更换可执行 openssl rand -hex 32）
+  # 私钥（本地部署用，随机 64 位十六进制；部署前请自行生成并替换，
+  # 生成命令：openssl rand -hex 32；切勿使用本占位值部署到公网）
   secret_key: "CHANGE_ME_RUN_openssl_rand_hex_32_TO_GENERATE"
   # 私有单用户实例，关闭防滥用限流器（限流器依赖 Redis，关闭后可单容器运行）
   limiter: false

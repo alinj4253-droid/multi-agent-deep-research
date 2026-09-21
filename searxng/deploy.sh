@@ -1,10 +1,9 @@
 #!/bin/bash
 # SearXNG 一键部署 + 验证（WSL2 Docker）
-# 用法（在 WSL2 Ubuntu 内）：
-#   cd <项目根目录>/searxng
+# 用法（在 WSL2 Ubuntu 内，进入本项目 searxng/ 目录）：
 #   bash deploy.sh
 set -e
-cd <项目根目录>/searxng
+cd "$(cd "$(dirname "$0")" && pwd)"
 
 # 消除 Windows CRLF 影响
 sed -i 's/\r$//' settings.yml

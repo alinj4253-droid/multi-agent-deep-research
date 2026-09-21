@@ -115,19 +115,34 @@ def read_file_content(
 
 
 if __name__ == "__main__":
-    # 本地调试入口：直接运行本文件可验证 Markdown、PDF 等上传文件读取效果
-    def get_session_context():
-        return "./examples/test_docs"
+    # 本地调试入口：直接运行本文件可验证 Markdown、CSV 等上传文件读取效果。
+    # 测试文件在系统临时目录里现场生成，不依赖仓库内任何固定测试数据，
+    # 也不会在项目目录留下残留。
+    import tempfile
 
-    md_path = "sub_dir/测试文件.md"
-    pdf_path = "sub_dir/测试文件.pdf"
+    _debug_dir = tempfile.mkdtemp(prefix="upload_read_debug_")
+    _sub = Path(_debug_dir) / "sub_dir"
+    _sub.mkdir(parents=True, exist_ok=True)
 
-    result = read_file_content.invoke({"filename": md_path})
-    print("===== 读取MD文件结果 =====")
-    print(result)
-
-    result_pdf = read_file_content.invoke(
-        {"filename": pdf_path, "instruction": "提取PDF文字"}
+    # 现场造一个 Markdown 与一个 CSV，覆盖「文本直读」与「结构化预览」两条路径
+    (_sub / "测试文件.md").write_text(
+        "# 测试文档\n\n这是上传文件读取工具的本地测试内容。", encoding="utf-8"
     )
-    print("\n===== 读取PDF文件结果 =====")
-    print(result_pdf)
+    (_sub / "测试数据.csv").write_text(
+        "指标,数值\n支付转化,0.32\n用户复购,0.18\n", encoding="utf-8"
+    )
+
+    # 重新绑定本模块命名空间的 get_session_context，read_file_content 内部会取到它
+    def get_session_context():
+        return _debug_dir
+
+    print(f"调试目录: {_debug_dir}")
+
+    print("===== 读取 MD 文件结果 =====")
+    print(read_file_content.invoke({"filename": "sub_dir/测试文件.md"}))
+
+    print("\n===== 读取 CSV 文件结果（未知后缀走文本兜底）=====")
+    print(read_file_content.invoke({"filename": "sub_dir/测试数据.csv"}))
+
+    print("\n===== 读取不存在文件（应返回中文错误提示）=====")
+    print(read_file_content.invoke({"filename": "sub_dir/不存在.md"}))

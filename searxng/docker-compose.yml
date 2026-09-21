@@ -1,7 +1,6 @@
 # SearXNG 私有元搜索引擎 —— 本地一键部署（WSL2 Docker）
 #
-# 部署（在 WSL2 Ubuntu 内）：
-#   cd <项目根目录>/searxng
+# 部署（在 WSL2 Ubuntu 内，进入本项目 searxng/ 目录）：
 #   bash deploy.sh
 # 就绪检查：
 #   bash start_wait.sh

@@ -12,7 +12,8 @@
 #   wsl -d Ubuntu-20.04 -- bash -lc "nohup bash <项目根目录>/searxng/keep_wsl_alive.sh >/tmp/keepalive.log 2>&1 &"
 # 或注册到任务计划“登录时启动”（见 README 部署章节）。
 set -u
-COMPOSE_DIR="<项目根目录>/searxng"
+# 自动定位到本脚本所在目录（searxng/），不依赖硬编码路径
+COMPOSE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "[keepalive] started at $(date '+%F %T'), keeping WSL awake + searxng healthy"
 while true; do

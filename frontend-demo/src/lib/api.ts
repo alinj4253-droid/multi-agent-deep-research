@@ -1,5 +1,9 @@
 import { API_BASE_URL } from "./config"
-import type { ThreadDetailResponse, ThreadListResponse } from "../types"
+import type {
+  OutputFile,
+  ThreadDetailResponse,
+  ThreadListResponse
+} from "../types"
 
 export interface TaskResponse {
   status: string
@@ -17,13 +21,8 @@ export interface UploadResponse {
   files: string[]
 }
 
-export interface OutputFile {
-  name: string
-  type: string
-  path: string
-  size: number
-  mtime: number
-}
+// OutputFile 统一定义在 ../types，此处只做转出，避免两份定义各自演化后不一致
+export type { OutputFile }
 
 export interface FileListResponse {
   files?: OutputFile[]
