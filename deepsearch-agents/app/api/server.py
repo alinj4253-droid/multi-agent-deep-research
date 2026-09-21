@@ -33,6 +33,7 @@ from app.agent.main_agent import run_deep_agent, init_main_agent, close_main_age
 from app.api.monitor import manager
 from app.api.threads import get_thread_detail, list_threads
 from app.utils.validators import InvalidThreadIdError, validate_thread_id
+from app.runtime.task_manager import TaskManager
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -63,8 +64,8 @@ project_root = current_dir.parent
 
 app = FastAPI(title="DeepAgents API", lifespan=lifespan)
 
-# 保存 thread_id -> 后台 Agent 任务，用于同一会话任务替换和主动取消
-active_tasks: dict[str, asyncio.Task] = {}
+# 统一管理 thread_id -> 后台 Agent 任务：保证同一 thread 任意时刻最多一个活跃 Runtime
+task_manager = TaskManager()
 
 # output 保存每个会话最终工作区，前端只允许从这里浏览和下载生成文件
 output_dir = project_root / "output"
@@ -103,17 +104,6 @@ class TaskRequest(BaseModel):
     thread_id: Optional[str] = None
 
 
-def _forget_task(thread_id: str, task: asyncio.Task) -> None:
-    """
-    清理已结束任务的登记关系。
-
-    done_callback 触发时，active_tasks 中可能已经被新任务替换；只有仍是同一个
-    task 时才删除，避免误清理同 thread_id 下刚启动的新任务。
-    """
-    if active_tasks.get(thread_id) is task:
-        active_tasks.pop(thread_id, None)
-
-
 @app.post("/api/task")
 async def run_task(request: TaskRequest):
     """
@@ -129,15 +119,20 @@ async def run_task(request: TaskRequest):
             raise HTTPException(status_code=400, detail=str(e))
     thread_id = request.thread_id or str(uuid.uuid4())
 
-    # 同一个 thread_id 只保留一个活跃任务，新任务会先取消旧任务，避免并发写同一会话目录
-    old_task = active_tasks.get(thread_id)
-    if old_task and not old_task.done():
-        old_task.cancel()
-
-    # create_task 把长耗时 Agent 执行交给事件循环，接口本身不用等待最终结果
-    task = asyncio.create_task(run_deep_agent(request.query, thread_id))
-    active_tasks[thread_id] = task
-    task.add_done_callback(lambda finished_task: _forget_task(thread_id, finished_task))
+    # 同一个 thread_id 任意时刻只允许一个活跃 Runtime：先取消并等待旧任务真正结束，
+    # 再启动新任务；旧任务短时间无法退出时不并发启动第二个，而是返回 409。
+    task, started = await task_manager.start(
+        thread_id,
+        lambda: run_deep_agent(request.query, thread_id),
+    )
+    if not started:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "status": "cancelling",
+                "message": "上一个任务仍在关闭中，请稍后重试",
+            },
+        )
 
     return {"status": "started", "thread_id": thread_id}
 
@@ -154,25 +149,13 @@ async def cancel_task(thread_id: str):
     注意：取消会向 asyncio.Task 注入 CancelledError。若底层第三方工具正在执行不可中断
     的同步阻塞调用，任务可能需要等该调用返回后才会真正结束。
     """
-    task = active_tasks.get(thread_id)
-    if not task or task.done():
-        active_tasks.pop(thread_id, None)
+    # 与 /api/task 共用同一套取消-等待生命周期语义
+    state = await task_manager.cancel(thread_id, timeout=1.0)
+    if state == "not_found":
         raise HTTPException(status_code=404, detail="任务不存在或已结束")
-
-    # 先发出取消信号，再短暂等待协程响应；若底层阻塞中，则返回 cancelling 给前端继续展示状态
-    task.cancel()
-    try:
-        await asyncio.wait_for(task, timeout=1.0)
-    except asyncio.CancelledError:
-        _forget_task(thread_id, task)
-        return {"status": "cancelled", "thread_id": thread_id}
-    except asyncio.TimeoutError:
+    if state == "cancelling":
+        # 已请求取消但底层阻塞中，前端继续展示"取消中"状态
         return {"status": "cancelling", "thread_id": thread_id}
-    except Exception as e:
-        _forget_task(thread_id, task)
-        return {"status": "cancelled", "thread_id": thread_id, "message": str(e)}
-
-    _forget_task(thread_id, task)
     return {"status": "cancelled", "thread_id": thread_id}
 
 
