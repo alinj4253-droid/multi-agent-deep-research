@@ -234,6 +234,23 @@ class TestExpectations:
         art_miss = evaluate_expectations(art, self._passed_summary(), artifact_count=0)
         assert any("产物" in f for f in art_miss)
 
+    def test_numeric_expected_contains_tolerates_separators(self):
+        from benchmarks.schemas import evaluate_expectations
+        case = {"expectations": {"expected_contains": ["338350"]}}
+        # 千分位逗号 / 空格不应让正确数值误判失败
+        assert evaluate_expectations(
+            case, self._passed_summary(answer="平方和 = 338,350", python=1)) == []
+        assert evaluate_expectations(
+            case, self._passed_summary(answer="平方和 = 338 350", python=1)) == []
+        # 数值确实错误时仍判失败
+        miss = evaluate_expectations(
+            case, self._passed_summary(answer="平方和 = 338000", python=1))
+        assert any("338350" in f for f in miss)
+        # 非数字期望保持精确子串匹配
+        text_case = {"expectations": {"expected_contains": ["平方和"]}}
+        assert evaluate_expectations(
+            text_case, self._passed_summary(answer="平方和 = 338350", python=1)) == []
+
     def test_expectation_failure_marks_case_failed(self):
         # 终态成功但违反 expectation -> build_case_result 必须改判 failed
         case = {"id": "c", "expectations": {"max_web_calls": 0}}

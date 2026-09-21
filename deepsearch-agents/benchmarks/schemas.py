@@ -232,9 +232,16 @@ def evaluate_expectations(
     expected_contains = expectations.get("expected_contains") or []
     if isinstance(expected_contains, str):
         expected_contains = [expected_contains]
+    # 数字答案忽略千分位分隔符（逗号 / 空格），避免把“338,350”误判为不等于 338350；
+    # 非数字期望仍按精确子串匹配。
+    normalized_answer = re.sub(r"[,\s\u00a0]", "", answer)
     for needle in expected_contains:
-        if str(needle) not in answer:
-            failures.append(f"期望答案包含子串 {needle!r}，但未命中")
+        needle_s = str(needle)
+        if needle_s.isdigit():
+            if needle_s not in normalized_answer:
+                failures.append(f"期望答案包含数值 {needle_s}（允许千分位分隔），但未命中")
+        elif needle_s not in answer:
+            failures.append(f"期望答案包含子串 {needle_s!r}，但未命中")
 
     return failures
 
