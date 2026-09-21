@@ -9,7 +9,7 @@
 ![AI](https://img.shields.io/badge/AI-Agent-00c853?style=flat)
 ![DeepAgents](https://img.shields.io/badge/DeepAgents-0.5.7-1C3C3C.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-WebSocket-009688.svg?logo=fastapi&logoColor=white)
-![Stars](https://img.shields.io/github/stars/didilili/deepsearch-agents?logo=github&style=flat)
+![Stars](https://img.shields.io/github/stars/alinj4253-droid/multi-agent-deep-research?logo=github&style=flat)
 [![Read Online](https://img.shields.io/badge/在线教程-点击访问-blue?logo=bookstack)](https://didilili.github.io/ai-agents-from-zero/#/%E5%AE%9E%E6%88%98%E9%A1%B9%E7%9B%AE-%E6%B7%B1%E5%BA%A6%E7%A0%94%E6%90%9C/0-%E5%89%8D%E8%A8%80)
 
 </div>
