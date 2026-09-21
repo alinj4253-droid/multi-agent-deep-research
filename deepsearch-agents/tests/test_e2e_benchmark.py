@@ -105,7 +105,8 @@ class TestBuildReport:
             build_case_result({"id": "c"}, [_ev("task_cancelled")], 1),
             build_case_result({"id": "d"}, [], 1, timed_out=True),
         ]
-        report = build_report(results, git_commit="abc123", model="m",
+        report = build_report(results, git_commit="abc123",
+                              models={"main": "m", "fast": "m"},
                               generated_at="2026-09-21T00:00:00")
         s = report["summary"]
         assert s["total"] == 4 and s["passed"] == 1 and s["failed"] == 1

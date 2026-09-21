@@ -23,7 +23,6 @@ import asyncio
 import datetime
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,35 +30,11 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parents[0]))
 
 from benchmarks.e2e_client import run_case, wait_for_server  # noqa: E402
+from benchmarks.runtime_config import collect_metadata  # noqa: E402
 from benchmarks.schemas import build_report  # noqa: E402
 
 CASES = ROOT / "cases.json"
 RESULTS_DIR = ROOT / "results"
-
-
-def git_commit_sha() -> str:
-    """获取当前代码版本的短 SHA（取不到时返回 unknown，不手填）。"""
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=ROOT.parents[1],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return out.stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
-
-
-def model_name() -> str:
-    """从环境变量读取实际配置的模型名（与 app/agent/llm.py 的 env 对齐）。"""
-    return (
-        os.getenv("DEEPSEEK_MODEL")
-        or os.getenv("OPENAI_MODEL")
-        or os.getenv("MODEL_NAME")
-        or "default"
-    )
 
 
 def load_e2e_cases() -> list[dict]:
@@ -97,15 +72,22 @@ async def main_async(base_url: str, timeout: float) -> int:
         )
         results.append(r)
 
+    # 与应用同一套 .env 加载，记录真实模型 / 预算 / 环境，绝不包含密钥
+    meta = collect_metadata()
     report = build_report(
         results,
+        benchmark="online-e2e-runtime",
         mode="e2e",
-        git_commit=git_commit_sha(),
-        model=model_name(),
-        config={
+        git_commit=meta.get("git_commit", "unknown"),
+        models=meta.get("models", {}),
+        metadata={
+            "llm": meta.get("llm", {}),
+            "budgets": meta.get("budgets", {}),
+            "python_version": meta.get("python_version", ""),
+            "os": meta.get("os", ""),
+            "cases_sha256": meta.get("cases_sha256", ""),
             "base_url": base_url,
             "timeout_seconds": timeout,
-            "budget": {"web_per_task": 3, "academic_per_task": 2, "python_per_task": 12},
         },
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
     )
@@ -121,7 +103,7 @@ async def main_async(base_url: str, timeout: float) -> int:
         f"  total={s['total']} pass={s['passed']} fail={s['failed']} "
         f"cancel={s['cancelled']} timeout={s['timeout']} unknown={s['unknown']} "
         f"pass_rate={s['pass_rate']}% success={s['success']}\n"
-        f"  git={report['git_commit']} model={report['model']}\n"
+        f"  git={report['git_commit']} models={report['models']}\n"
         f"  results -> {out}"
     )
     # 只有全部用例 passed（failed/cancelled/timeout/unknown 全为 0）才算成功

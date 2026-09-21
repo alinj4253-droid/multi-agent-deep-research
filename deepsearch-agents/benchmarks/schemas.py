@@ -173,10 +173,11 @@ def build_case_result(
 def build_report(
     results: list[CaseResult],
     *,
+    benchmark: str = "online-e2e-runtime",
     mode: str = "e2e",
     git_commit: str = "",
-    model: str = "",
-    config: Optional[dict] = None,
+    models: Optional[dict] = None,
+    metadata: Optional[dict] = None,
     generated_at: str = "",
 ) -> dict[str, Any]:
     """
@@ -184,6 +185,9 @@ def build_report(
 
     成功判定非常严格：只有 total>0 且 passed==total（failed/cancelled/timeout/unknown
     全部为 0）时 summary.success 才为 True，runner 据此决定退出码。
+
+    models/metadata 由 benchmarks.runtime_config.collect_metadata() 采集，记录真实
+    模型、预算、Python 版本与 git SHA；本函数不接触任何密钥。
     """
     total = len(results)
     passed = sum(1 for r in results if r.status == STATUS_PASSED)
@@ -194,11 +198,12 @@ def build_report(
     success = total > 0 and passed == total
 
     return {
+        "benchmark": benchmark,
         "generated_at": generated_at,
         "mode": mode,
         "git_commit": git_commit,
-        "model": model,
-        "config": config or {},
+        "models": models or {},
+        "metadata": metadata or {},
         "summary": {
             "total": total,
             "passed": passed,
