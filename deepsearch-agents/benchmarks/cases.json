@@ -185,15 +185,15 @@
         },
         {
           "id": "e2e-04",
-          "name": "数据分析任务可现场计算",
-          "query": "计算前 100 个正整数的平方和。",
+          "name": "数据分析任务必须现场执行代码",
+          "query": "请用 Python 代码迭代计算斐波那契数列第 60 项 F(60) 的准确整数（定义 F(0)=0、F(1)=1、F(n)=F(n-1)+F(n-2)），必须实际运行代码并给出运行得到的整数结果。",
           "expectations": {
             "min_python_calls": 1,
             "max_python_calls": 12,
             "max_web_calls": 0,
             "max_academic_calls": 0,
             "expected_contains": [
-              "338350"
+              "1548008755920"
             ]
           }
         }
