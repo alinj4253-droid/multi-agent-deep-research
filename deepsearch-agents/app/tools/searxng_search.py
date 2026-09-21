@@ -36,6 +36,9 @@ _last_good: dict[str, Optional[float]] = {"transport": None, "ts": 0.0}
 _GOOD_TTL = 120.0  # 秒：超过后重新探测，以应对网络环境变化
 
 
+from app.tools.search_common import ProviderEmptyResults
+
+
 def get_searxng_base_url() -> str:
     return os.getenv("SEARXNG_URL", DEFAULT_BASE_URL).rstrip("/")
 
@@ -180,6 +183,7 @@ def searxng_search(
             order = ["http", "wsl"]
 
     errors = []
+    empty_seen = False  # 是否至少有一个通道“可达但空结果”
     for name in order:
         try:
             if name == "http":
@@ -196,13 +200,26 @@ def searxng_search(
             # 使两个通道返回条数与上层约定一致
             result["results"] = result["results"][:max_results]
             if not result["results"]:
-                raise RuntimeError(f"{name} 通道返回空结果")
+                # HTTP 200 空结果：数据源是健康的，只是该查询无匹配，不计熔断
+                raise ProviderEmptyResults(f"{name} 通道返回空结果")
             _last_good["transport"] = name
             _last_good["ts"] = time.time()
             return result
-        except Exception as e:  # 单通道失败则尝试下一通道
+        except ProviderEmptyResults as e:
+            empty_seen = True
+            errors.append(f"{name}: 空结果(数据源正常)")
+        except Exception as e:  # 单通道可用性故障则尝试下一通道
             errors.append(f"{name}: {type(e).__name__}: {str(e)[:100]}")
 
+    # 至少有一个通道可达但都没有匹配结果：返回 no_results，而不是当成数据源宕机
+    if empty_seen:
+        return {
+            "query": query,
+            "results": [],
+            "engine": "searxng",
+            "no_results": True,
+            "transport": "none",
+        }
     raise RuntimeError("SearXNG 所有通道均失败 -> " + " | ".join(errors))
 
 

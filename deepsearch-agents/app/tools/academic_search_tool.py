@@ -16,7 +16,12 @@ from langchain_core.tools import tool
 from app.api.context import get_thread_context
 from app.api.monitor import monitor
 from app.tools.academic_sources import academic_search
-from app.tools.search_common import SearchBudget, SearchCache
+from app.tools.search_common import (
+    SearchBudget,
+    SearchCache,
+    decorate_runtime,
+    to_cache_payload,
+)
 
 # 学术检索一次调用即并发查询三源，绝大多数主题 1 次即可；
 # 仅在结果明显偏离时允许换词再试 1 次，故硬上限设为 2
@@ -61,7 +66,13 @@ def academic_paper_search(
     cached = academic_cache.get(cache_key)
     if cached is not None:
         monitor.report_tool(tool_name="学术检索缓存命中", args={"query": query})
-        return cached
+        # 命中不消耗预算；用当前任务剩余预算重装饰，剔除上个任务残留序号
+        return decorate_runtime(
+            cached,
+            used=None,
+            remaining=academic_budget.remaining(thread_id),
+            cache_hit=True,
+        )
 
     # 2. 检索次数硬预算
     if academic_budget.remaining(thread_id) <= 0:
@@ -93,13 +104,16 @@ def academic_paper_search(
     except Exception as e:
         return {"query": query, "papers": [], "error": f"学术检索失败：{str(e)}"}
 
-    result["search_no"] = used
-    result["remaining_searches"] = academic_budget.remaining(thread_id)
+    remaining = academic_budget.remaining(thread_id)
 
-    # 4. 仅缓存有论文的成功查询（空结果不缓存）
+    # 4. 仅缓存有论文的“检索载荷”（不含任务元数据），空结果不缓存；
+    #    返回对象再附加当前任务的运行时序号与剩余预算。
     if result.get("papers"):
-        academic_cache.set(cache_key, result)
+        academic_cache.set(cache_key, to_cache_payload(result))
+        return decorate_runtime(result, used=used, remaining=remaining, cache_hit=False)
 
+    result["remaining_searches"] = remaining
+    result["search_no"] = used
     return result
 
 

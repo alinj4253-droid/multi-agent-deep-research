@@ -25,6 +25,8 @@ from app.tools.search_common import (
     CircuitBreaker,
     SearchBudget,
     SearchCache,
+    decorate_runtime,
+    to_cache_payload,
 )
 from app.tools.searxng_search import searxng_search
 
@@ -93,48 +95,88 @@ def search_with_fallback(
     duck_breaker: Optional[CircuitBreaker] = None,
 ) -> dict:
     """
-    依次尝试 SearXNG -> DuckDuckGo，任一成功即返回；熔断器跳过不可用数据源。
+    依次尝试 SearXNG -> DuckDuckGo，任一返回结果即返回；熔断器跳过不可用数据源。
+
+    关键语义（区分“数据源可用性”与“结果质量”）：
+    - 网络错误 / 超时 / 5xx / 解析异常 -> 数据源可用性故障，record_failure，累计后熔断；
+    - HTTP 200 但结果为空（no_results）-> 数据源是健康的，只是该查询无匹配，
+      record_success，不累计熔断；仍可尝试下一个数据源作为“质量兜底”，但不叫故障。
 
     返回在统一结构上额外带 provider 字段，标明实际命中的数据源。
-    全部失败时返回带 error 与 providers_tried 的字典（不抛异常，交由上层处理）。
+    - 两个数据源都健康但都空：返回 no_results=True（表达“没搜到”，而非“数据源挂了”）；
+    - 数据源全部不可用：返回 error 与 providers_tried（不抛异常，交由上层处理）。
     """
     sx_breaker = sx_breaker or searxng_breaker
     duck_breaker = duck_breaker or ddg_breaker
-    errors: list[str] = []
+    availability_errors: list[str] = []
+    healthy_empty: list[str] = []
+
+    def _attempt(name, breaker, fn, kwargs, provider_label):
+        """返回 result(dict) 表示命中；None 表示未命中（原因记录在闭包列表里）。"""
+        if not breaker.allow():
+            availability_errors.append(f"{name}: 熔断冷却中，跳过")
+            return None
+        try:
+            result = fn(**kwargs)
+        except Exception as e:
+            # 可用性故障：网络/超时/5xx/解析 -> 计入熔断
+            breaker.record_failure()
+            availability_errors.append(f"{name}: {type(e).__name__}: {str(e)[:80]}")
+            return None
+
+        # 能正常返回（没有抛异常）即说明数据源可达：成功闭合熔断，绝不因空结果累计失败
+        breaker.record_success()
+        if isinstance(result, dict) and result.get("results"):
+            result["provider"] = provider_label
+            return result
+
+        # 可达但空结果：质量问题，不是故障
+        healthy_empty.append(name)
+        return None
 
     # 1) 主数据源：SearXNG
-    if sx_breaker.allow():
-        try:
-            result = searxng_fn(query, max_results=max_results)
-            if isinstance(result, dict) and result.get("results"):
-                sx_breaker.record_success()
-                result["provider"] = f"searxng({result.get('transport', 'http')})"
-                return result
-            sx_breaker.record_failure()
-            errors.append("searxng: 空结果")
-        except Exception as e:
-            sx_breaker.record_failure()
-            errors.append(f"searxng: {type(e).__name__}: {str(e)[:80]}")
+    hit = _attempt(
+        "searxng",
+        sx_breaker,
+        searxng_fn,
+        {"query": query, "max_results": max_results},
+        None,  # provider 标签命中后按 transport 补
+    )
+    if hit is not None:
+        hit["provider"] = f"searxng({hit.get('transport', 'http')})"
+        return hit
 
     # 2) 兜底：DuckDuckGo
-    if duck_breaker.allow():
-        try:
-            result = ddg_fn(query=query, max_results=max_results, region=region)
-            if isinstance(result, dict) and result.get("results"):
-                duck_breaker.record_success()
-                result["provider"] = "duckduckgo"
-                return result
-            duck_breaker.record_failure()
-            errors.append("duckduckgo: 空结果")
-        except Exception as e:
-            duck_breaker.record_failure()
-            errors.append(f"duckduckgo: {type(e).__name__}: {str(e)[:80]}")
+    hit = _attempt(
+        "duckduckgo",
+        duck_breaker,
+        ddg_fn,
+        {"query": query, "max_results": max_results, "region": region},
+        "duckduckgo",
+    )
+    if hit is not None:
+        return hit
+
+    # 3) 汇总：至少有一个数据源健康但都没搜到 -> no_results（不是数据源不可用）
+    if healthy_empty:
+        note = "已尝试的数据源均正常响应，但没有检索到与该查询匹配的结果"
+        if availability_errors:
+            note += "；另有数据源不可用：" + " | ".join(availability_errors)
+        return {
+            "query": query,
+            "results": [],
+            "no_results": True,
+            "error": None,
+            "note": note,
+            "healthy_empty": healthy_empty,
+            "providers_tried": availability_errors,
+        }
 
     return {
         "query": query,
         "results": [],
         "error": "所有搜索数据源均不可用",
-        "providers_tried": errors,
+        "providers_tried": availability_errors,
     }
 
 
@@ -166,7 +208,13 @@ def internet_search(
     cached = search_cache.get(cache_key)
     if cached is not None:
         monitor.report_tool(tool_name="查询缓存命中", args={"query": query})
-        return cached
+        # 命中不消耗预算；用“当前任务”的剩余预算重装饰，剔除上个任务残留的序号
+        return decorate_runtime(
+            cached,
+            used=None,
+            remaining=search_budget.remaining(thread_id),
+            cache_hit=True,
+        )
 
     # 2. 检索次数预算硬限制：达到上限后不再对外请求，引导模型立即总结
     if search_budget.remaining(thread_id) <= 0:
@@ -205,11 +253,13 @@ def internet_search(
     # 4. 重排序
     if isinstance(result, dict) and result.get("results"):
         result["results"] = rerank_results(query, result["results"])
-        result["search_no"] = used
-        result["remaining_searches"] = search_budget.remaining(thread_id)
-        # 5. 仅缓存有结果的成功查询（空结果/错误不缓存）
-        search_cache.set(cache_key, result)
+        remaining = search_budget.remaining(thread_id)
+        # 5. 仅缓存“检索载荷”（不含 search_no/remaining 等任务元数据），
+        #    空结果/错误不缓存；返回给当前任务的对象再附加本次任务的运行时元数据。
+        search_cache.set(cache_key, to_cache_payload(result))
+        return decorate_runtime(result, used=used, remaining=remaining, cache_hit=False)
 
+    # 空结果 / 数据源不可用：不缓存，也不附加任务序号（保持 no_results / error 结构）
     return result
 
 

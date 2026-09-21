@@ -58,6 +58,11 @@ def get_thread_context() -> Optional[str]:
     return _thread_id_ctx.get()
 
 
+def reset_thread_context(thread_token: Token[Optional[str]]) -> None:
+    """仅恢复 thread_id 上下文（未设置 session_dir 时使用）。"""
+    _thread_id_ctx.reset(thread_token)
+
+
 def reset_session_context(
     session_token: Token[Optional[str]],
     thread_token: Optional[Token[Optional[str]]] = None,

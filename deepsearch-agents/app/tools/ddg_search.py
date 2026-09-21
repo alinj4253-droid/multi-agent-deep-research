@@ -47,11 +47,15 @@ def duckduckgo_search(
             }
         )
 
-    return {
+    payload = {
         "query": query,
         "results": results,
         "engine": "duckduckgo",
     }
+    # 正常响应但没有匹配结果：标记 no_results，供上层与“数据源不可用”区分（不计熔断）
+    if not results:
+        payload["no_results"] = True
+    return payload
 
 
 if __name__ == "__main__":

@@ -6,10 +6,20 @@
 - CircuitBreaker 熔断器，连续失败后短时跳过不可用数据源，避免反复等待超时
 """
 
+import copy
 import re
 import time
 from collections import OrderedDict
 from typing import Optional
+
+
+class ProviderEmptyResults(Exception):
+    """
+    数据源可达、响应正常，但该查询没有匹配结果。
+
+    这属于“结果质量”问题而不是“数据源可用性”故障：HTTP 200 + 空列表不应计入熔断失败，
+    否则冷门查询（返回空）会被误判成数据源挂掉而触发熔断、误报“所有数据源不可用”。
+    """
 
 
 class SearchBudget:
@@ -149,3 +159,37 @@ class CircuitBreaker:
     @property
     def is_open(self) -> bool:
         return not self.allow()
+
+
+# ============================================================
+# 缓存载荷与任务运行时元数据分离
+# ============================================================
+# 这些字段属于“当前任务”的运行时状态，绝不能写进跨任务共享的缓存：
+#   search_no          本次是该任务的第几次检索（随任务变化）
+#   remaining_searches 该任务剩余预算（随任务变化）
+#   cache_hit          本次调用是否命中缓存
+# 否则任务 A 缓存的对象被任务 B 命中时，会把 A 的预算/序号错误地带到 B。
+TASK_RUNTIME_META_KEYS = ("search_no", "remaining_searches", "cache_hit")
+
+
+def to_cache_payload(result: dict) -> dict:
+    """提取可安全跨任务复用的检索载荷（深拷贝并剔除任务运行时元数据）。"""
+    return {
+        k: copy.deepcopy(v)
+        for k, v in result.items()
+        if k not in TASK_RUNTIME_META_KEYS
+    }
+
+
+def decorate_runtime(result: dict, *, used, remaining, cache_hit: bool) -> dict:
+    """在返回给当前任务前，深拷贝载荷并附加“当前任务”的运行时元数据。
+
+    - miss：search_no 取本次实际序号 used；
+    - hit ：search_no 置 None（命中缓存并不产生新的对外检索序号），
+             remaining 仍反映当前任务的真实剩余预算。
+    """
+    out = copy.deepcopy(result)
+    out["cache_hit"] = cache_hit
+    out["remaining_searches"] = remaining
+    out["search_no"] = None if cache_hit else used
+    return out
