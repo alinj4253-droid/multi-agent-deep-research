@@ -62,10 +62,50 @@
       "name": "端到端任务（需 LLM + SearXNG）",
       "requires_llm": true,
       "cases": [
-        {"id": "e2e-01", "name": "常识直答不依赖外部检索", "query": "用一句话说明什么是 Transformer。"},
-        {"id": "e2e-02", "name": "网页检索任务带来源链接", "query": "检索 2026 年自动驾驶数据融合方向的最新进展，给出带来源的要点。"},
-        {"id": "e2e-03", "name": "学术检索任务返回论文条目", "query": "检索 2025-2026 年 4D Gaussian Splatting 的代表性论文。"},
-        {"id": "e2e-04", "name": "数据分析任务可现场计算", "query": "计算前 100 个正整数的平方和。"}
+        {
+          "id": "e2e-01",
+          "name": "常识直答不依赖外部检索",
+          "query": "用一句话说明什么是 Transformer。",
+          "expectations": {
+            "max_web_calls": 0,
+            "max_academic_calls": 0,
+            "max_python_calls": 0
+          }
+        },
+        {
+          "id": "e2e-02",
+          "name": "网页检索任务带来源链接",
+          "query": "检索 2026 年自动驾驶数据融合方向的最新进展，给出带来源的要点。",
+          "expectations": {
+            "min_web_calls": 1,
+            "max_web_calls": 3,
+            "max_academic_calls": 0,
+            "require_source_url": true
+          }
+        },
+        {
+          "id": "e2e-03",
+          "name": "学术检索任务返回论文条目",
+          "query": "检索 2025-2026 年 4D Gaussian Splatting 的代表性论文。",
+          "expectations": {
+            "min_academic_calls": 1,
+            "max_academic_calls": 2,
+            "max_web_calls": 0,
+            "require_paper_url": true
+          }
+        },
+        {
+          "id": "e2e-04",
+          "name": "数据分析任务可现场计算",
+          "query": "计算前 100 个正整数的平方和。",
+          "expectations": {
+            "min_python_calls": 1,
+            "max_python_calls": 12,
+            "max_web_calls": 0,
+            "max_academic_calls": 0,
+            "expected_contains": ["338350"]
+          }
+        }
       ]
     }
   ]

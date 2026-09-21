@@ -52,6 +52,7 @@ class CaseResult:
     python_calls: int = 0
     final_answer: str = ""
     errors: list[str] = field(default_factory=list)
+    expectation_failures: list[str] = field(default_factory=list)
     artifact_count: int = 0
     event_count: int = 0
 
@@ -153,6 +154,14 @@ def build_case_result(
         status = STATUS_FAILED
         errors.append("收到 task_result 但最终答案为空")
 
+    # 确定性 expectations：工具路由 / 调用预算 / 来源链接 / 产物 / 答案子串
+    expectation_failures: list[str] = []
+    if status == STATUS_PASSED:
+        expectation_failures = evaluate_expectations(case, summary, artifact_count)
+        if expectation_failures:
+            status = STATUS_FAILED
+            errors.extend(expectation_failures)
+
     return CaseResult(
         case_id=str(case.get("id", "")),
         name=str(case.get("name", "")),
@@ -165,9 +174,64 @@ def build_case_result(
         python_calls=summary["python_calls"],
         final_answer=summary["final_answer"],
         errors=errors,
+        expectation_failures=expectation_failures,
         artifact_count=artifact_count,
         event_count=len(events or []),
     )
+
+
+def evaluate_expectations(
+    case: dict[str, Any],
+    summary: dict[str, Any],
+    artifact_count: int = 0,
+) -> list[str]:
+    """
+    校验 case 中声明的确定性 expectations（纯函数，离线可测）。
+
+    支持键（均可选，只校验显式声明的项）：
+    - min_web_calls / max_web_calls
+    - min_academic_calls / max_academic_calls
+    - min_python_calls / max_python_calls
+    - require_source_url / require_paper_url：最终答案需包含 http(s) 链接
+    - require_artifact：工作区至少有 1 个产物文件
+    - expected_contains：最终答案需包含的子串（字符串或列表，全部命中才通过）
+
+    :return: 未满足项的人类可读说明列表；空列表代表全部满足。
+    """
+    expectations = case.get("expectations") or {}
+    if not isinstance(expectations, dict):
+        return []
+
+    failures: list[str] = []
+    answer = summary.get("final_answer", "") or ""
+
+    def _check_counts(prefix: str, actual: int) -> None:
+        mn = expectations.get(f"min_{prefix}")
+        mx = expectations.get(f"max_{prefix}")
+        if mn is not None and actual < mn:
+            failures.append(f"min_{prefix} 期望>={mn}，实际 {actual}")
+        if mx is not None and actual > mx:
+            failures.append(f"max_{prefix} 期望<={mx}，实际 {actual}")
+
+    _check_counts("web_calls", summary.get("web_calls", 0))
+    _check_counts("academic_calls", summary.get("academic_calls", 0))
+    _check_counts("python_calls", summary.get("python_calls", 0))
+
+    if expectations.get("require_source_url") or expectations.get("require_paper_url"):
+        if "http://" not in answer and "https://" not in answer:
+            failures.append("期望答案包含来源链接(http/https)，但未检测到")
+
+    if expectations.get("require_artifact") and artifact_count < 1:
+        failures.append("期望生成至少 1 个工作区产物，实际为 0")
+
+    expected_contains = expectations.get("expected_contains") or []
+    if isinstance(expected_contains, str):
+        expected_contains = [expected_contains]
+    for needle in expected_contains:
+        if str(needle) not in answer:
+            failures.append(f"期望答案包含子串 {needle!r}，但未命中")
+
+    return failures
 
 
 def build_report(

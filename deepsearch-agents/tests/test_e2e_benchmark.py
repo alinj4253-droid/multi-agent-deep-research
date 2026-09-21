@@ -150,6 +150,93 @@ class TestBuildReport:
         assert s["success"] is False
 
 
+# ---------- Phase 4：确定性 expectations ----------
+class TestExpectations:
+    def _passed_summary(self, answer="结论", web=0, academic=0, python=0):
+        return {
+            "status": "passed",
+            "final_answer": answer,
+            "tool_calls": web + academic + python,
+            "web_calls": web,
+            "academic_calls": academic,
+            "python_calls": python,
+            "errors": [],
+        }
+
+    def test_no_expectations_passes(self):
+        from benchmarks.schemas import evaluate_expectations
+        assert evaluate_expectations({}, self._passed_summary()) == []
+
+    def test_common_question_must_not_search(self):
+        from benchmarks.schemas import evaluate_expectations
+        # 常识题却调用了 1 次网页检索 -> max_web_calls=0 不满足
+        case = {"expectations": {"max_web_calls": 0, "max_academic_calls": 0,
+                                 "max_python_calls": 0}}
+        failures = evaluate_expectations(case, self._passed_summary(web=1))
+        assert any("max_web_calls" in f for f in failures)
+
+    def test_web_min_max_and_source(self):
+        from benchmarks.schemas import evaluate_expectations
+        case = {"expectations": {"min_web_calls": 1, "max_web_calls": 3,
+                                 "require_source_url": True}}
+        ok = evaluate_expectations(
+            case, self._passed_summary(answer="见 https://example.com/a", web=2))
+        assert ok == []
+        # 没有来源链接 -> 失败
+        miss = evaluate_expectations(case, self._passed_summary(answer="无链接", web=2))
+        assert any("链接" in f for f in miss)
+        # 超过上限 -> 失败
+        over = evaluate_expectations(
+            case, self._passed_summary(answer="https://e.com", web=4))
+        assert any("max_web_calls" in f for f in over)
+        # 一次都没搜 -> min 失败
+        under = evaluate_expectations(
+            case, self._passed_summary(answer="https://e.com", web=0))
+        assert any("min_web_calls" in f for f in under)
+
+    def test_academic_paper_url(self):
+        from benchmarks.schemas import evaluate_expectations
+        case = {"expectations": {"min_academic_calls": 1, "require_paper_url": True}}
+        assert evaluate_expectations(
+            case, self._passed_summary(answer="arxiv http://arxiv.org/abs/1", academic=1)
+        ) == []
+        miss = evaluate_expectations(
+            case, self._passed_summary(answer="无论文链接", academic=1))
+        assert any("链接" in f for f in miss)
+
+    def test_python_expected_contains_and_artifact(self):
+        from benchmarks.schemas import evaluate_expectations
+        case = {"expectations": {"min_python_calls": 1,
+                                 "expected_contains": ["338350"]}}
+        assert evaluate_expectations(
+            case, self._passed_summary(answer="平方和是 338350", python=1)) == []
+        miss = evaluate_expectations(
+            case, self._passed_summary(answer="平方和是 338000", python=1))
+        assert any("338350" in f for f in miss)
+
+        art = {"expectations": {"require_artifact": True}}
+        assert evaluate_expectations(art, self._passed_summary(), artifact_count=1) == []
+        art_miss = evaluate_expectations(art, self._passed_summary(), artifact_count=0)
+        assert any("产物" in f for f in art_miss)
+
+    def test_expectation_failure_marks_case_failed(self):
+        # 终态成功但违反 expectation -> build_case_result 必须改判 failed
+        case = {"id": "c", "expectations": {"max_web_calls": 0}}
+        events = [
+            _ev("tool_start", data={"tool_name": "网络搜索工具"}),
+            _ev("task_result", data={"result": "答了但乱搜网"}),
+        ]
+        r = build_case_result(case, events)
+        assert r.status == "failed" and r.success is False
+        assert r.expectation_failures
+
+    def test_expectation_success_marks_case_passed(self):
+        case = {"id": "c", "expectations": {"max_web_calls": 0}}
+        r = build_case_result(case, [_ev("task_result", data={"result": "直接回答"})])
+        assert r.status == "passed" and r.success is True
+        assert r.expectation_failures == []
+
+
 # ---------- 真实 HTTP + WebSocket 链路（fake agent，不调 LLM） ----------
 class TestRealHttpWebSocketSmoke:
     def test_full_task_flow_over_asgi(self, monkeypatch, tmp_path):
