@@ -28,6 +28,7 @@ from app.api.context import (
 )
 from app.api.monitor import monitor
 from app.tools.academic_search_tool import academic_budget
+from app.tools.python_exec_tool import reset_session_call_count
 from app.tools.web_search_tool import search_budget
 
 # 文件类工具由主智能体直接掌握，负责读取上传附件和生成最终交付文档
@@ -126,9 +127,12 @@ async def run_deep_agent(task_query, session_id):
     session_dir_token = set_session_context(session_dir_str)
     session_id_token = set_thread_context(session_id)
 
-    # 重置本次任务的检索次数预算（网页检索与学术检索各自独立计 3 次对外上限）
-    search_budget.reset(session_id)
-    academic_budget.reset(session_id)
+    # 统一按"每任务（per-turn）"重置工具调用预算：
+    # 预算目标是防止单次任务内部失控循环，而不是永久限制一整个历史会话。
+    # 同一会话的新一轮提问应当拥有全新的预算额度。
+    search_budget.reset(session_id)        # 网页检索：每任务 3 次对外上限
+    academic_budget.reset(session_id)     # 学术检索：每任务 2 次对外上限
+    reset_session_call_count(session_id)  # Python 执行：每任务 12 次上限
 
     # 前端拿到工作目录后，可以展示本次任务生成的 Markdown/PDF 等产物
     monitor.report_session_dir(session_dir_str)
