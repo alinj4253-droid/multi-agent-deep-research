@@ -46,6 +46,27 @@ async def _slow_cancel(started: asyncio.Event):
         raise asyncio.CancelledError
 
 
+async def _slow_cancel_count(started: asyncio.Event, count: list):
+    """同 _slow_cancel，但记录 CancelledError 被投递的次数（观察式应只投递 1 次）。"""
+    started.set()
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        count.append(1)
+        t = asyncio.current_task()
+        while t.cancelling():
+            t.uncancel()
+        try:
+            await asyncio.sleep(0.3)
+        except asyncio.CancelledError:
+            # 若被二次取消（旧 wait_for 行为），这里会再次收到 CancelledError
+            count.append(1)
+            while t.cancelling():
+                t.uncancel()
+            await asyncio.sleep(0.05)
+        raise asyncio.CancelledError
+
+
 def test_no_old_task_creates():
     async def case():
         mgr = TaskManager()
@@ -163,3 +184,100 @@ def test_cancel_and_wait_helper_on_done_task():
         return await cancel_and_wait_task(task)
 
     assert run(case()) is True
+
+
+# ============================================================
+# Phase 5：观察式 timeout（不二次取消）+ cancel 同锁 + 并发一致性
+# ============================================================
+
+def test_cancel_and_wait_issues_only_one_cancel():
+    """超时返回 False 时只应投递一次取消（旧 asyncio.wait_for 会在超时时再 cancel 一次）。"""
+    async def case():
+        mgr = TaskManager()
+        started = asyncio.Event()
+        count: list = []
+        task, _ = await mgr.start("t1", lambda: _slow_cancel_count(started, count))
+        await started.wait()
+
+        stopped = await cancel_and_wait_task(task, timeout=0.05)
+        await asyncio.gather(task, return_exceptions=True)
+        return stopped, count
+
+    stopped, count = run(case())
+    assert stopped is False          # 0.05s 内退不出来
+    assert count == [1]              # 关键：CancelledError 只投递了一次，没有隐式第二次
+
+
+def test_restart_possible_after_stuck_task_finishes():
+    async def case():
+        mgr = TaskManager()
+        started = asyncio.Event()
+        old, _ = await mgr.start("t1", lambda: _slow_cancel(started))
+        await started.wait()
+
+        _task, started_ok = await mgr.start("t1", _quick, cancel_timeout=0.02)
+        assert started_ok is False   # 旧任务还在收尾，拒绝并发启动
+
+        await asyncio.gather(old, return_exceptions=True)
+        await asyncio.sleep(0)       # 等 done_callback 清理登记
+        new, started_ok2 = await mgr.start("t1", _quick)
+        await asyncio.gather(new, return_exceptions=True)
+        return started_ok2
+
+    assert run(case()) is True       # 旧任务结束后同 thread 可重新启动
+
+
+def test_concurrent_start_and_cancel_end_consistent():
+    async def case():
+        mgr = TaskManager()
+        started, cancelled = asyncio.Event(), asyncio.Event()
+        task, _ = await mgr.start("t1", lambda: _cancellable(started, cancelled))
+        await started.wait()
+
+        async def replace():
+            return await mgr.start("t1", _quick, cancel_timeout=2.0)
+
+        async def cancel_it():
+            await asyncio.sleep(0.01)
+            return await mgr.cancel("t1", timeout=2.0)
+
+        replace_result, cancel_state = await asyncio.gather(replace(), cancel_it())
+        await asyncio.sleep(0.05)
+
+        registered = mgr.get("t1")
+        await asyncio.gather(task, return_exceptions=True)
+        if replace_result[0] is not None:
+            await asyncio.gather(replace_result[0], return_exceptions=True)
+        return cancel_state, registered, mgr.active_count(), mgr.is_active("t1")
+
+    cancel_state, registered, active_count, is_active = run(case())
+    # 无论 start 与 cancel 谁先拿到锁，最终都不应残留活跃任务或幽灵登记
+    assert cancel_state in ("cancelled", "cancelling", "not_found")
+    assert registered is None or registered.done()
+    assert active_count == 0
+    assert is_active is False
+
+
+def test_cancel_uses_per_thread_lock_no_cross_thread_effect():
+    async def case():
+        mgr = TaskManager()
+        sa, ca = asyncio.Event(), asyncio.Event()
+        sb, cb = asyncio.Event(), asyncio.Event()
+        ta, _ = await mgr.start("a", lambda: _cancellable(sa, ca))
+        tb, _ = await mgr.start("b", lambda: _cancellable(sb, cb))
+        await asyncio.gather(sa.wait(), sb.wait())
+
+        # 取消 a 不影响 b
+        state_a = await mgr.cancel("a", timeout=1.0)
+        await asyncio.sleep(0)
+        b_active = mgr.is_active("b")
+        b_got_cancel = cb.is_set()     # 在手动清理 b 之前记录它是否被误取消
+        await asyncio.gather(ta, return_exceptions=True)
+        tb.cancel()
+        await asyncio.gather(tb, return_exceptions=True)
+        return state_a, b_active, ca.is_set(), b_got_cancel
+
+    state_a, b_active, a_cancelled, b_cancelled = run(case())
+    assert state_a == "cancelled"
+    assert b_active is True           # b 未被波及
+    assert a_cancelled and not b_cancelled
