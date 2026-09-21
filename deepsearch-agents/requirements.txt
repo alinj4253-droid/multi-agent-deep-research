@@ -21,11 +21,13 @@ python-multipart>=0.0.6     # 文件上传支持
 ddgs>=9.0.0                 # DuckDuckGo 检索（SearXNG 兜底）
 requests>=2.31.0            # HTTP 请求库（SearXNG / arXiv / OpenAlex / Crossref）
 
-# --- 数据分析与可视化 (数据分析助手沙箱) ---
+# --- 数据分析与可视化 (数据分析助手：受控 Python 子进程) ---
 pandas>=2.0.0               # 数据处理
+numpy>=1.26.0               # 数值计算（pandas 底层，子进程内常用，显式声明）
 matplotlib>=3.8.0           # 图表绘制（execute_python_code 内出图）
 scipy>=1.11.0               # 科学计算 / 统计分布（避免模型 import scipy 失败重试）
 openpyxl>=3.1.0             # Excel 读取引擎，Pandas 依赖
+Pillow>=10.0.0              # 图像处理（子进程内生成/读取图片）
 
 # --- 文件处理 (upload_file_read_tool / markdown_tools / pdf_tools) ---
 python-docx>=1.0.0          # Word (.docx) 读取
@@ -42,4 +44,6 @@ typing-extensions>=4.5.0    # 类型兼容性支持
 
 # --- 开发与测试 ---
 pytest>=8.0.0               # 单元测试
+httpx>=0.27.0               # Starlette TestClient（ASGI 冒烟测试）与端到端评测 HTTP 客户端
+websockets>=12.0            # 端到端评测（run_e2e_benchmark）的 WebSocket 客户端
 ruff>=0.6.0                 # 代码检查/格式化（.pre-commit-config.yaml 需要）
