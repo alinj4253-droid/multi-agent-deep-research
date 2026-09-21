@@ -16,11 +16,11 @@ import aiosqlite
 from deepagents import create_deep_agent
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from app.agent.llm import model
+from app.agent.llm import get_main_model
 from app.agent.prompts import main_agent_content
-from app.agent.subagents.academic_literature_agent import academic_literature_agent
-from app.agent.subagents.data_analysis_agent import data_analysis_agent
-from app.agent.subagents.network_search_agent import network_search_agent
+from app.agent.subagents.academic_literature_agent import build_academic_literature_agent
+from app.agent.subagents.data_analysis_agent import build_data_analysis_agent
+from app.agent.subagents.network_search_agent import build_network_search_agent
 from app.api.context import (
     reset_session_context,
     set_session_context,
@@ -65,14 +65,14 @@ async def init_main_agent():
     # 2. subagents 放网络检索、数据分析、学术文献三类助手
     # 3. checkpointer 通过 thread_id 保存同一会话中的执行上下文（持久化到 SQLite）
     main_agent = create_deep_agent(
-        model=model,
+        model=get_main_model(),
         system_prompt=main_agent_content["system_prompt"],
         tools=[generate_markdown, convert_md_to_pdf, read_file_content],
         checkpointer=checkpointer,
         subagents=[
-            data_analysis_agent,
-            network_search_agent,
-            academic_literature_agent,
+            build_data_analysis_agent(),
+            build_network_search_agent(),
+            build_academic_literature_agent(),
         ],
     )
     print("[MainAgent] 主智能体初始化完成（SQLite 持久化已启用）")
