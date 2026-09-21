@@ -8,7 +8,6 @@ WebSocket 长连接。HTTP 接口只做轻量调度，真正的 DeepAgents 执�
 
 import asyncio
 import os
-import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
