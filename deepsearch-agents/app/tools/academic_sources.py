@@ -22,10 +22,15 @@ from dotenv import find_dotenv, load_dotenv
 load_dotenv(find_dotenv())
 
 # 加入 mailto 可进入 OpenAlex / Crossref 的"礼貌池"，获得更稳定的限流待遇
-CONTACT_EMAIL = "deepresearch-agent@example.com"
-HEADERS = {
-    "User-Agent": f"deepresearch-agent/1.0 (academic search; mailto:{CONTACT_EMAIL})"
-}
+# 联系邮箱仅从环境变量 ACADEMIC_CONTACT_EMAIL 读取（.env，已被 .gitignore 忽略）：
+# 配置后才加入 mailto 进入 OpenAlex/Crossref 礼貌池；未配置则不发送 mailto，
+# 也不硬编码任何虚假或真实邮箱。
+ACADEMIC_CONTACT_EMAIL = os.getenv("ACADEMIC_CONTACT_EMAIL", "").strip()
+_ua = "deepresearch-agent/1.0 (academic search"
+if ACADEMIC_CONTACT_EMAIL:
+    _ua += f"; mailto:{ACADEMIC_CONTACT_EMAIL}"
+HEADERS = {"User-Agent": _ua + ")"}
+POLITE_PARAMS = {"mailto": ACADEMIC_CONTACT_EMAIL} if ACADEMIC_CONTACT_EMAIL else {}
 DEFAULT_TIMEOUT = 15
 
 # 喂给大模型前的字段裁剪阈值，控制单次研究任务的上下文规模
@@ -193,7 +198,7 @@ def search_openalex(query: str, max_results: int = 5, year_from: Optional[int] =
     params = {
         "search": query,
         "per-page": max_results,
-        "mailto": CONTACT_EMAIL,
+        **POLITE_PARAMS,
     }
     # 配了免费 key 就走专属配额，规避共享出口 IP 的 429
     if OPENALEX_API_KEY:
@@ -262,7 +267,7 @@ def _crossref_query(
         "query": query,
         "rows": max_results,
         "select": "title,author,published,DOI,container-title,is-referenced-by-count,abstract,type,URL",
-        "mailto": CONTACT_EMAIL,
+        **POLITE_PARAMS,
     }
     if sort_cited:
         # 按被引降序：默认相关性排序偏重新论文，会漏掉高被引奠基工作
@@ -366,6 +371,64 @@ def _merge_source(a: str, b: str) -> str:
     return "+".join(seen)
 
 
+def _norm_doi(doi):
+    """DOI 归一化：去 URL 前缀、小写、去空白，用于跨源强匹配。"""
+    if not doi:
+        return ""
+    d = str(doi).strip().lower()
+    d = d.replace("https://doi.org/", "").replace("http://dx.doi.org/", "")
+    return d
+
+
+def _fuse_records(primary: dict, secondary: dict) -> dict:
+    """
+    字段级融合同一篇论文的两条跨源记录（不做模糊匹配，调用方已确认是同一篇）。
+
+    primary 为信息更全的主记录，secondary 提供互补字段：
+    - citation_count：取较大数值（None 视为缺失）；
+    - abstract/pdf_url/doi/venue/url：取更长的非空值；
+    - authors：取人数更多的非空列表；
+    - year：主记录缺失才用次记录补齐；两者都有但不一致时保留主记录；
+    - source：合并为去重保序拼接字符串（兼容旧字段），并额外给出 sources 列表。
+    """
+    import copy
+
+    base = copy.deepcopy(primary)
+
+    cites = [
+        c for c in (base.get("citation_count"), secondary.get("citation_count"))
+        if isinstance(c, (int, float))
+    ]
+    base["citation_count"] = max(cites) if cites else None
+
+    for field in ("abstract", "pdf_url", "doi", "venue", "url"):
+        bv = str(base.get(field) or "")
+        ov = str(secondary.get(field) or "")
+        if len(ov.strip()) > len(bv.strip()):
+            base[field] = secondary.get(field)
+
+    if len(secondary.get("authors") or []) > len(base.get("authors") or []):
+        base["authors"] = copy.deepcopy(secondary.get("authors"))
+
+    if not base.get("year") and secondary.get("year"):
+        base["year"] = secondary.get("year")
+
+    base["source"] = _merge_source(base.get("source", ""), secondary.get("source", ""))
+    base["sources"] = [x for x in str(base["source"]).split("+") if x]
+    return base
+
+
+def _record_completeness(p: dict):
+    """完整度评分，决定融合时谁做主记录：引用数、有无摘要、非空字段数、作者数、标题长度。"""
+    return (
+        p.get("citation_count") if isinstance(p.get("citation_count"), (int, float)) else -1,
+        1 if p.get("abstract") else 0,
+        sum(1 for k in ("doi", "pdf_url", "venue", "url") if p.get(k)),
+        len(p.get("authors") or []),
+        len(p.get("title") or ""),
+    )
+
+
 def merge_and_rank(
     papers: list[dict],
     top_k: int,
@@ -384,22 +447,39 @@ def merge_and_rank(
       结果必然被更早的经典论文占据，与"最新"的诉求相反。
     """
     merged: dict[str, dict] = {}
+    doi_index: dict[str, str] = {}  # 归一化 DOI -> 标题 key，支持 DOI 强匹配
+
     for p in papers:
-        key = _normalize_title(p["title"])
-        if not key:
+        title_key = _normalize_title(p.get("title", ""))
+        if not title_key:
             continue
-        if key not in merged:
-            merged[key] = p
+
+        # 匹配优先级：DOI 完全一致（强）> 归一化标题一致（中）；不做模糊匹配防误合并
+        doi_key = _norm_doi(p.get("doi"))
+        match_key = doi_index.get(doi_key) if doi_key else None
+        if match_key is None and title_key in merged:
+            match_key = title_key
+
+        if match_key is None:
+            record = dict(p)
+            record["sources"] = [
+                x for x in str(record.get("source", "")).split("+") if x
+            ]
+            merged[title_key] = record
+            if doi_key:
+                doi_index[doi_key] = title_key
+            continue
+
+        old = merged[match_key]
+        # 完整度更高者做主记录，再字段级融合，互补字段不再被丢弃
+        if _record_completeness(p) > _record_completeness(old):
+            fused = _fuse_records(p, old)
         else:
-            old = merged[key]
-            # 选择引用数更高、或有摘要的记录为主记录，并合并来源标签（同源去重）
-            old_score = (old.get("citation_count") or -1, bool(old.get("abstract")))
-            new_score = (p.get("citation_count") or -1, bool(p.get("abstract")))
-            if new_score > old_score:
-                p["source"] = _merge_source(old["source"], p["source"])
-                merged[key] = p
-            else:
-                old["source"] = _merge_source(old["source"], p["source"])
+            fused = _fuse_records(old, p)
+        merged[match_key] = fused
+        fused_doi = _norm_doi(fused.get("doi"))
+        if fused_doi and fused_doi not in doi_index:
+            doi_index[fused_doi] = match_key
 
     if year_from:
         # 时效优先：新年份排前，同年内再比引用数
@@ -418,6 +498,8 @@ def merge_and_rank(
                 len(p.get("title") or ""),
             )
 
+    for rec in merged.values():
+        rec.setdefault("sources", [x for x in str(rec.get("source", "")).split("+") if x])
     ranked = sorted(merged.values(), key=sort_key, reverse=True)
     return ranked[:top_k]
 
