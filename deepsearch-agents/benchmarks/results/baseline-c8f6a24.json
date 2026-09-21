@@ -1,0 +1,105 @@
+{
+  "benchmark": "online-e2e-runtime",
+  "generated_at": "2026-09-21T19:16:12",
+  "mode": "e2e",
+  "git_commit": "c8f6a24",
+  "models": {
+    "main": "deepseek-flash",
+    "fast": "deepseek-flash"
+  },
+  "metadata": {
+    "llm": {
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "main_model": "deepseek-flash",
+      "fast_model": "deepseek-flash"
+    },
+    "budgets": {
+      "web": 3,
+      "academic": 2,
+      "python": 12
+    },
+    "python_version": "3.11.9",
+    "os": "Windows 10",
+    "cases_sha256": "4f44823bab439925",
+    "base_url": "http://127.0.0.1:8001",
+    "timeout_seconds": 180.0,
+    "run_id": "b9395bf1"
+  },
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "cancelled": 0,
+    "timeout": 0,
+    "unknown": 0,
+    "pass_rate": 100.0,
+    "success": true
+  },
+  "cases": [
+    {
+      "case_id": "e2e-01",
+      "name": "常识直答不依赖外部检索",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 1.63,
+      "tool_calls": 0,
+      "web_calls": 0,
+      "academic_calls": 0,
+      "python_calls": 0,
+      "final_answer": "Transformer 是一种完全基于自注意力机制（self-attention）、抛弃循环与卷积结构的神经网络架构，能并行处理序列并建模任意位置间的依赖关系，是当今大语言模型的基础。",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 2
+    },
+    {
+      "case_id": "e2e-02",
+      "name": "网页检索任务带来源链接",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 46.6,
+      "tool_calls": 4,
+      "web_calls": 3,
+      "academic_calls": 1,
+      "python_calls": 0,
+      "final_answer": "## 2026 年自动驾驶数据融合最新进展（要点汇总）\n\n本次由学术文献助手（聚合 arXiv/OpenAlex/Crossref）与网络检索助手各检索一次。**需先说明两个检索局限**：学术结果 2024–2026 以**综述为主**，BEV 融合、Occupancy、4D 雷达等子方向的原始方法论文未直接命中；网络检索因工具检索预算耗尽，中国车企与 Waymo/Tesla/Mobileye 的 2026 官方发布未获直接来源。以下仅列实际检索到的内容。\n\n### 一、代表性论文（2024–2026）\n\n| 标题（简） | 一作 | 年 | venue | 引用 | 链接 (DOI) |\n|---|---|---|---|---|---|\n| Multimodal Autonomous Driving 遮挡目标检测融合框架 | Li Z. | 2026 | Electronics | 4 | 10.3390/electronics15010245 |\n| Vision & Multimodal Perception for AD 综述 | Nikolaidis S. | 2026 | World EV J. | 1 | 10.3390/wevj17060277 |\n| Adaptive Multimodal Fusion（注意力自适应融合） | Sangeetha R. | 2026 | Autonomous Systems in IoV | 0 | 10.1002/9781394311729.ch4 |\n| Multi-sensor fusion on AD perception: comprehensive survey | Jiang M. | 2026 | Multimodal Transportation | 0 | 10.1016/j.multra.2026.100325 |\n| A Review of Multi-Sensor Fusion in Autonomous Driving | Qian H. | 2025 | Sensors | 75 | 10.3390/s25196033 |\n| Environmental Perception via Multi-Sensor Fusion 综述 | Yang B. | 2025 | World EV J. | 60 | 10.3390/wevj16010020 |\n| Multi-Sensor Fusion Object Detection Survey | Wang H. | 2025 | Sensors | 50 | 10.3390/s25092794 |\n\n### 二、发展脉络要点\n1. **从单模态转向 Camera-LiDAR-Radar 互补融合**，以应对光照、天气、遮挡与量程退化（Qian 2025；Yang 2025）。\n2. **架构收敛于两条主线**：BEV 为中心的融合 与 跨模态注意力/Transformer 融合（Qian 2025 综述明确此判断）。\n3. **从\"检测\"延伸到\"鲁棒感知 + 遮挡建模\"**：2026 年出现显式遮挡建模与特征补全的融合框架（Li 2026）。\n4. **Occupancy 成为 BEV 之后的主流输出表示**，并扩展为跨数据集基准（Occ3D-Waymo，2026 更新：https://www.emergentmind.com/topics/occ3d-waymo-dataset）。\n5. **端到端大模型/VLM 与融合一体化**成趋势：Wayve 主张渐进式端到端路线（Axios，2026-09-16：https://www.axios.com/2026/09/16/wayve-robotaxi-av-tesla-waymo）；S4-Driver 用自监督 MLLM 从传感器直接生成规划轨迹（arXiv 2505.24139）；新增\"多模态冗余度量化度量\"研究（arXiv 2603.06544）。\n\n### 三、网络动态补充\n- **Occ3D-Waymo** 提供体素级 3D 占用标注与统一评测协议，面向动态驾驶场景（2026 更新）。\n- 数据集现状索引（KITTI/nuScenes/Waymo Open Dataset 等）：https://blog.csdn.net/u013250861/article/details/158208406 ；nuScenes 官网 https://nuscenes.org/ 。\n- End-to-end 驾驶挑战赛（CVPR）成竞赛焦点，NVIDIA Research 夺冠（报道来源为 Bilibili，权威性有限）。\n\n### 四、未覆盖 / 需补充的方向（如实标注）\n- **BEV 融合、Occupancy、端到端融合、4D 毫米波雷达/时序融合的原始方法论文**：本次未检索到，上述综述仅作为范式提及。\n- **中国车企（华为 ADS、小鹏、理想、蔚来）2026 动态**、**Waymo/Tesla/Mobileye 2026 官方技术发布**、**2026 年法规与行业预测**：本次网络检索无直接命中。\n\n如需，可针对上述缺口再做一次聚焦检索（每个方向单独关键词），但我不会对同一主题重复派单现有结果。是否需要我针对 BEV 融合或 Occupancy 方向做一次专门检索？",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 8
+    },
+    {
+      "case_id": "e2e-03",
+      "name": "学术检索任务返回论文条目",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 23.27,
+      "tool_calls": 1,
+      "web_calls": 0,
+      "academic_calls": 1,
+      "python_calls": 0,
+      "final_answer": "## 2025–2026 年 4D Gaussian Splatting 代表性论文\n\n**检索说明（重要）**：本次单次检索（arXiv + OpenAlex + Crossref）共返回 8 篇，**全部为 2026 年**工作。因按\"年份优先\"排序且三源对 \"4D Gaussian Splatting\" 精确组合词的召回偏散，**2025 年专门论文本批未返回**；2023 年奠基工作（3D-GS、4D-GS、Deformable-3DGS）属背景，未纳入。以下表格请按\"2026 年代表工作\"看待。\n\n| # | 论文 | 主要作者 | 年份 | Venue | 引用 | 链接 | 一句话贡献 |\n|---|------|---------|------|-------|------|------|-----------|\n| 1 | A Survey on 3D Gaussian Splatting | Chen, Wang | 2026 | ACM Computing Surveys | 38 | 10.1145/3807511 | 3DGS 首篇系统综述，含动态扩展 |\n| 2 | GSCodec Studio | Li, Gao, Liao | 2026 | IEEE TCSVT | 7 | 10.1109/tcsvt.2026.3654794 | 模块化框架，专攻 4D 动态高斯压缩 |\n| 3 | 4D Scaffold GS (Dynamic-Aware Anchor) | Oh, Kim | 2026 | AAAI 2026 | 1 | 10.1609/aaai.v40i5.37332 | 锚点式 4D 表示，兼顾保真与低存储 |\n| 4 | Sparse4DGS | Shi 等 | 2026 | AAAI 2026 | 1 | 10.1609/aaai.v40i11.37848 | 首个面向稀疏帧的动态重建 |\n| 5 | VA-4DGS | Huang, Song | 2026 | SSRN 预印本 | 0 | 10.2139/ssrn.7344965 | 各向异性 4D 高斯 + 先验引导 |\n| 6 | Lumina-4DGS | Wang 等 | 2026 | Preprints 预印本 | 0 | 10.20944/preprints202601.2150.v1 | 多相机阵列光照鲁棒 4D 重建 |\n| 7 | Thermal4D | Zhong, Xu | 2026 | Sensors | 0 | 10.3390/s26103041 | 热红外图像物理驱动 4D 重建 |\n| 8 | 4D Surgery via Deformable 3DGS | Men, Meng | 2026 | IEEE VRW 2026 | 0 | 10.1109/vrw70859.2026.00338 | 变形 3DGS 用于微创手术重建 |\n\n所有 DOI 均可由 `https://doi.org/<DOI>` 解析；Sparse4DGS 另有 arXiv:2511.07122。\n\n**2025–2026 研究脉络（5 条）**\n\n1. **动态表示与变形场持续演进**——从\"时空高斯+变形场\"经典范式，走向锚点式、各向异性等更高效的 4D 显式表示，核心是保真度与存储的权衡。\n2. **压缩与内存优化成为落地关键**——4D 高斯存储/传输开销突出，压缩被系统化、模块化，指向沉浸式媒体标准化格式。\n3. **稀疏视角/稀疏帧重建兴起**——摆脱对密集多视角视频的依赖，Sparse4DGS 是 2026 年新方向。\n4. **鲁棒性与跨模态扩展**——应对真实采集的光照/曝光不一致（Lumina-4DGS）及热红外等新模态（Thermal4D），拓宽适用边界。\n5. **应用向垂直领域下沉**——除自由视角/体积视频外，渗透手术仿真、数字人等场景；城市级/自动驾驶级动态 4D 工作本批未出现。\n\n**信息缺口（如实标注）**\n- 2025 年专门论文本次未返回；2026 年论文引用数普遍很低（0–7），符合新近发表特征。\n- 如需 2023 奠基工作与 2025 高被引核心工作作为背景章节，建议另行以更低 `year_from` 补检。\n\n**结论**：2025–2026 年该方向已从\"能不能重建动态场景\"转向\"如何高效、鲁棒、可落地\"——**压缩、稀疏输入、跨模态/光照鲁棒、垂直应用**是四条主线，但本次证据以 2026 年新作为主，2025 年证据不足。",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 4
+    },
+    {
+      "case_id": "e2e-04",
+      "name": "数据分析任务必须现场执行代码",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 15.6,
+      "tool_calls": 3,
+      "web_calls": 0,
+      "academic_calls": 0,
+      "python_calls": 3,
+      "final_answer": "已实际运行代码完成计算。\n\n## 结果\n\n**F(60) = 1548008755920**（13 位精确整数）\n\n## 方法与代码\n\n采用**迭代法**（滚动变量），O(n) 时间、无递归栈溢出风险，Python 原生大整数保证结果精确：\n\n```python\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n\nprint(fib(60))   # 1548008755920\n```\n\n## 运行输出（末尾片段）\n\n```\nF(57) = 365435296162\nF(58) = 591286729879\nF(59) = 956722026041\nF(60) = 1548008755920\n递推关系校验 (F(n)=F(n-1)+F(n-2)): 通过\n```\n\n已逐项校验 F(0)~F(60) 全部满足递推关系。\n\n脚本保存路径：`output/session_e2e-e2e-04-b9395bf1/fibonacci.py`",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 1,
+      "event_count": 6
+    }
+  ]
+}

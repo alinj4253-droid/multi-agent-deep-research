@@ -70,8 +70,10 @@
 
 | 项 | 值 |
 |---|---|
-| 基线文件 | `results/baseline-5ae71ae.json` |
-| 对应 commit | `5ae71ae` |
+| 基线文件 | `results/baseline-c8f6a24.json` |
+| 对应 commit | `c8f6a24`（LLM 懒加载 + 空答案契约后的运行时版本） |
+| 运行环境 | 干净 Python 3.11.9（与 CI 同版本，依赖取自 `requirements-lock.txt`），Windows |
+| 逐用例延迟 | e2e-01 1.6s / e2e-02 46.6s（web3+acad1）/ e2e-03 23.3s（acad1）/ e2e-04 15.6s（py3，1 产物） |
 | 模型 | main=fast=`deepseek-flash`（DeepSeek，`https://api.deepseek.com/v1`） |
 | 用例结果 | **4 passed / 4 total**（success=true，退出码 0） |
 | 每任务预算 | 网页 3 / 学术 2 / Python 12 |
