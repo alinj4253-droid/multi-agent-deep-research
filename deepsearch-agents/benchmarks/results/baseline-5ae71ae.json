@@ -1,0 +1,105 @@
+{
+  "benchmark": "online-e2e-runtime",
+  "generated_at": "2026-09-21T17:18:50",
+  "mode": "e2e",
+  "git_commit": "5ae71ae",
+  "models": {
+    "main": "deepseek-flash",
+    "fast": "deepseek-flash"
+  },
+  "metadata": {
+    "llm": {
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "main_model": "deepseek-flash",
+      "fast_model": "deepseek-flash"
+    },
+    "budgets": {
+      "web": 3,
+      "academic": 2,
+      "python": 12
+    },
+    "python_version": "3.14.7",
+    "os": "Windows 11",
+    "cases_sha256": "4f44823bab439925",
+    "base_url": "http://localhost:8001",
+    "timeout_seconds": 180.0,
+    "run_id": "17f7cb41"
+  },
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "cancelled": 0,
+    "timeout": 0,
+    "unknown": 0,
+    "pass_rate": 100.0,
+    "success": true
+  },
+  "cases": [
+    {
+      "case_id": "e2e-01",
+      "name": "常识直答不依赖外部检索",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 3.86,
+      "tool_calls": 0,
+      "web_calls": 0,
+      "academic_calls": 0,
+      "python_calls": 0,
+      "final_answer": "Transformer 是一种完全基于自注意力机制（self-attention）的神经网络架构，它摒弃了循环和卷积结构，通过并行处理序列中所有位置之间的关联来建模上下文，最初为机器翻译提出，现已成为大语言模型（如 GPT、BERT）的核心基础。\n\n（此问为常识性问题，未调用检索助手。）",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 2
+    },
+    {
+      "case_id": "e2e-02",
+      "name": "网页检索任务带来源链接",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 42.53,
+      "tool_calls": 4,
+      "web_calls": 3,
+      "academic_calls": 1,
+      "python_calls": 0,
+      "final_answer": "## 自动驾驶数据融合最新进展（2025–2026）\n\n以下结论基于本次检索实际返回的材料，来源分「学术文献」与「网络公开信息」两条线。**需先说明检索局限**：学术侧单次检索共返回 8 篇（Crossref 7、arXiv 1、OpenAlex 命中 0），且全部集中在 **2026 年**，2024–2025 方法与 BEV/4D 雷达/端到端融合等细分方向的专门论文本次未检索到；网络侧检索预算耗尽，仅覆盖 NVIDIA 与 CES 2026 部分角度。缺口均已如实标注，未做补全。\n\n### 一、学术侧：2026 年代表性论文\n\n| 标题（简称） | 第一作者 | 年份 | 来源 | 一句话贡献 | 链接 |\n|---|---|---|---|---|---|\n| Robust Occluded Object Detection in Multimodal AD | Li Zhengqing | 2026 | Electronics | 显式建模遮挡并做特征补全的融合感知框架 | https://doi.org/10.3390/electronics15010245 |\n| Multimodal Sensor Fusion in AVs: Tech, Architectures, Challenges | Viktor Patrik | 2026 | Sensors | PRISMA 系统综述，梳理融合架构与开放挑战 | https://doi.org/10.3390/s26113528 |\n| Vision and Multimodal Perception for AD | Nikolaidis Savvas | 2026 | World Electric Vehicle Journal | 综述视觉/多模态感知的架构与融合方式 | https://doi.org/10.3390/wevj17060277 |\n| Multi-sensor fusion on AD perception: A comprehensive survey | Jiang Mengyu | 2026 | Multimodal Transportation | 面向感知的多传感器融合综合综述 | https://doi.org/10.1016/j.multra.2026.100325 |\n| Lightweight Sensor Fusion for AD: Systematic Review | Zhang Jie | 2026 | SSRN 预印本 | 从车载边缘部署视角看轻量化融合约束 | https://doi.org/10.2139/ssrn.7422695 |\n| Adaptive Multimodal Fusion with Attention-Based Learning | Sangeetha R. | 2026 | Autonomous Systems in IoV（书章） | 注意力驱动的自适应多模态融合感知 | https://doi.org/10.1002/9781394311729.ch4 |\n| Feature Fusion Methods for Multimodal Image Recognition | Jin Jiayan | 2026 | ITM Web of Conferences | 按早/中/晚融合层级分析融合策略 | https://doi.org/10.1051/itmconf/20268901010 |\n| TaCarla: Benchmarking Dataset for End-to-End AD | Tugrul Gorgulu | 2026 | arXiv | 含感知+规划标注的端到端基准数据集 | https://arxiv.org/abs/2602.23499 |\n\n> 引用数均为 0–4（2026 年新刊，属正常）；TaCarla 引用数字段工具返回为空，标注\"未提供\"。\n\n**脉络要点（基于以上材料）：**\n1. **综述密集涌现**：2026 年集中出现多篇系统综述，方向正从单点方法创新转向架构/挑战的整体梳理。\n2. **融合层级仍是分类主轴**：早/中/晚融合仍为主要组织框架，注意力机制被用于实现自适应对齐。\n3. **部署与轻量化成为新焦点**：关注点明显转向边缘 SoC 上的计算开销与推理延迟。\n4. **鲁棒性/遮挡等长尾场景受重视**：出现显式遮挡建模+特征补全的融合框架。\n5. **端到端配套基准并行推进**：如 TaCarla 提供感知与规划联合标注。\n\n**明确未检索到**：BEV 感知/BEV 多模态对齐、4D 毫米波雷达与 LiDAR-camera 融合专论、Transformer/VLM/世界模型用于融合、时序融合与 occupancy prediction 结合，以及 2024–2025 年工作。\n\n### 二、产业与网络侧动态\n\n**NVIDIA（官方一手，2025）：**\n- **DRIVE Hyperion 10 robotaxi 参考平台**：成对 DRIVE AGX Thor SoC，配 14 摄像头 + 9 雷达 + 3 激光雷达 + 12 超声波，实现 360° 实时传感器融合，面向 L4。https://blogs.nvidia.com/blog/robotaxi-leaders-full-stack-open-platform/\n- **DRIVE AGX Thor 开发者套件**：支持 FP32/16/8/4 量化，面向更大边缘 AI 模型（感知+融合）。https://developer.nvidia.com/blog/accelerate-autonomous-vehicle-development-with-the-nvidia-drive-agx-thor-developer-kit/\n- **DRIVE 平台技术文档**：强调生成式 AI 优化与端到端 AV 软件栈冗余算力。https://developer.download.nvidia.com/drive/docs/nvidia-drive-agx-thor-platform-for-developers.pdf\n\n**CES 2026（媒体报道）：**\n- **Teradar 首发太赫兹传感器并融资 1.5 亿美元**，被视为 AV 传感器竞争格局的潜在拐点，作为对激光雷达/毫米波/视觉融合方案的补充或挑战。https://thecaptable.co/teradars-150m-investment-in-terahertz-sensors-for-autonomous-vehicles/\n\n**学术/媒体观点（2025）：** 深度学习综述强调融合对成本与监管挑战的作用（https://journal.hep.com.cn/comengsys/EN/10.20517/ces.2024.83）；行业分析指成本仍是规模化障碍（网易转载，弱证据）。\n\n### 三、本次检索缺口（供后续补检）\n- **车企侧**：仅覆盖 NVIDIA；Tesla/Waymo/华为/小鹏/蔚来/理想/Mobileye 本次未检索到专门结果。\n- **会议**：CVPR/ICLR/NeurIPS 2026 与融合相关热点本次未检索到。\n- **争论与市场**：4D 毫米波雷达 vs 纯视觉之争、Yole/McKinsey/高工智能汽车等市场预测本次未检索到。\n- 建议后续以更聚焦关键词（`BEV multimodal fusion`、`4D radar LiDAR fusion`、`end-to-end AD multimodal`、`CVPR 2026 BEV fusion`、`华为 ADS 4 融合`）分别补检。\n\n**一句话总结**：2026 年该方向的学术主线是\"综述体系化 + 轻量化部署 + 鲁棒性提升\"，产业侧则由 NVIDIA Thor/Hyperion 的高冗余多传感器融合平台与 CES 2026 太赫兹新传感路线共同推动。",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 8
+    },
+    {
+      "case_id": "e2e-03",
+      "name": "学术检索任务返回论文条目",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 42.0,
+      "tool_calls": 1,
+      "web_calls": 0,
+      "academic_calls": 1,
+      "python_calls": 0,
+      "final_answer": "以下为基于学术文献助手本次实际检索结果（arXiv / OpenAlex / Crossref 三库，限定 `year_from=2025`，关键词 \"4D Gaussian Splatting dynamic scene reconstruction\" 等）整理的汇总。**需先如实说明一处重要局限**：本次检索未召回 2025 年高被引的 4DGS 方法类代表论文，命中结果多为 2026 年新出预印本（引用 0~1），2025 年命中的主要是 3DGS 综述与表面重建工作。以下不做编造，缺口已标注。\n\n## 主表格（代表性论文，按年份/影响力排序）\n\n| 年份 | 论文 | 作者 | venue | 引用 | 一句话贡献 | 链接/DOI |\n|---|---|---|---|---|---|---|\n| 2026 | Sparse4DGS | Changyue Shi 等 | AAAI 2026 | 1 | 首个面向稀疏帧输入的动态 4DGS 重建 | arXiv:2511.07122 |\n| 2026 | RU4D-SLAM | Yangfan Zhao 等 | arXiv 预印本 | 未检索到 | 不确定性重加权引入 4DGS-SLAM | arXiv:2602.20807 |\n| 2026 | VA-4DGS | Huang Tongyuan 等 | SSRN 预印本 | 0 | 先验引导各向异性 4DGS | 10.2139/ssrn.7344965 |\n| 2026 | Lumina-4DGS | Wang Xiaoqiang 等 | Preprints 预印本 | 0 | 抗光照不一致的 4DGS 重建 | 10.20944/preprints202601.2150.v1 |\n| 2026 | Hybrid Feature-Enhanced 4DGS | Li Sha, Qin WanXiang | Eurasia J. Sci. Tech. | 0 | 混合特征增强时空表达 | 10.61784/ejst3136 |\n| 2025 | 3DGS as a New Era: A Survey | Fei Ben 等 | IEEE TVCG | 224 | 3DGS 时代系统综述（含 4D 分支） | 10.1109/tvcg.2024.3397828 |\n| 2025 | PGSR | Chen Danpeng 等 | IEEE TVCG | 189 | 平面化 GS 高保真表面重建（脉络参考） | 10.1109/tvcg.2024.3494046 |\n| 2026 | A Survey on 3D Gaussian Splatting | Guikun Chen, Wenguan Wang | ACM Computing Surveys | 38 | 首个系统梳理 3DGS 的综述 | 10.1145/3807511 |\n\n## 发展方向要点（基于本次返回结果）\n\n1. **输入设定：从稠密帧转向稀疏/受限帧**——Sparse4DGS 指出既有 4DGS 依赖稠密视频帧，首次提出稀疏帧动态重建，是新的问题设定。\n2. **目标：从\"能重建\"转向\"稳重建\"**——Lumina-4DGS 处理多相机光照不一致（AE/AWB/ISP），VA-4DGS 引入先验引导的各向异性建模，反映真实成像条件下的鲁棒化趋势。\n3. **特征表达与建图融合**——Hybrid Feature-Enhanced 4DGS 强化多尺度时空特征；RU4D-SLAM 把 4DGS 与 SLAM、不确定性重加权结合，向动态导航/在线建图延伸。\n4. **综述体系成型**——IEEE TVCG 与 ACM Computing Surveys 上的 3DGS 综述（224/38 引用）为 4D 分支提供了方法学框架与谱系定位。\n5. **方法类工作整体年轻**——本次 4DGS 方法论文全部为 2026 年、引用 0~1，尚无高被引 2025 年代表工作被召回。\n\n## 数据缺口与建议\n\n- **未检索到**：RU4D-SLAM 引用数缺失；VA-4DGS / Lumina-4DGS / Hybrid 三篇在 Crossref 引用为 0（预印本/新刊，尚未被引）；多篇 4DGS 方法的**最终会议/期刊 venue 未确认**（仅有预印本）。\n- **脉络不完整**：用户期望的\"1 篇奠基性工作\"（2023 年原版 4DGS）因限定 `year_from=2025` 未进入结果集，本次未收录；若要补齐\"2023 原版 → 2024 Deformable/4D 变体 → 2025 流式/压缩/生成\"的完整谱系，需**解除 2025 时间限制另做一次跨年代检索**。\n\n**结论**：就\"2025–2026 代表性 4DGS 论文\"这一具体问题，本次检索只稳定给出了 5 篇 2026 年新方法（AAAI 2026 的 Sparse4DGS 相对最具代表性，是唯一的正式会议论文）与 3 篇 3DGS 综述/表面重建工作；2025 年真正的高被引 4DGS 代表作本次**未召回**。若您需要，我可以在下一轮以\"4D Gaussian Splatting\"为主题、不限年份重新检索，以补齐 2023 年奠基论文与完整发展脉络。",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 0,
+      "event_count": 4
+    },
+    {
+      "case_id": "e2e-04",
+      "name": "数据分析任务必须现场执行代码",
+      "status": "passed",
+      "success": true,
+      "latency_seconds": 12.24,
+      "tool_calls": 1,
+      "web_calls": 0,
+      "academic_calls": 0,
+      "python_calls": 1,
+      "final_answer": "已实际运行 Python 迭代代码完成计算。\n\n## 计算代码（纯迭代，无递归，使用 Python 原生 int）\n\n```python\ndef fib_iter(n):\n    a, b = 0, 1          # F(0), F(1)\n    if n == 0:\n        return 0\n    for _ in range(n - 1):\n        a, b = b, a + b  # 迭代推进\n    return b\n\nprint(\"F(0..10) =\", [fib_iter(i) for i in range(11)])\nprint(\"F(59) =\", fib_iter(59))\nprint(\"F(60) =\", fib_iter(60))\nprint(\"digits(F(60)) =\", len(str(fib_iter(60))))\n```\n\n## 实际运行输出\n\n```\nF(0..10) = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]\nF(59) = 956722026041\nF(60) = 1548008755920\nF(59)+F(58) = 1548008755920 == F(60)? True\ndigits of F(60) = 13\ntype: <class 'int'>\n```\n\n## 结果\n\n**F(60) = 1548008755920**（共 13 位十进制数字，精确整数，无浮点误差）\n\n## 交叉核对\n\n| 校验项 | 数值 / 结论 |\n|---|---|\n| F(0)…F(10) | 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55（与定义一致） |\n| F(59) | 956722026041 |\n| F(58) | 591286729879 |\n| F(59)+F(58) | 1548008755920 = F(60) ✅ |\n| 数据类型 | `<class 'int'>`（精确整数） |\n\n结果文件已保存至工作目录：`output/session_e2e-e2e-04-17f7cb41/fib60_result.txt`（含 F(60)、F(59) 及位数信息）。",
+      "errors": [],
+      "expectation_failures": [],
+      "artifact_count": 1,
+      "event_count": 4
+    }
+  ]
+}

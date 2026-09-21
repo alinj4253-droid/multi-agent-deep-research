@@ -178,10 +178,15 @@ CORS 默认放行 `http://localhost:5173` 与 `http://127.0.0.1:5173`，可用�
 - **离线 Benchmark**：对真实代码做确定性断言（路径边界、白名单、缓存 TTL/完整 key、每任务
   预算、检索降级/熔断），秒级完成、不触网，CI 必跑；需要 LLM 的 4 个端到端用例在离线模式记为
   skipped。结果写入 `benchmarks/results/YYYY-MM-DD.json`。
-- **端到端 Benchmark（Answer Quality）**：`run_e2e_benchmark.py` 像前端一样先连 WebSocket 再
-  POST `/api/task`，收集事件直到终态，记录每个用例的成败、延迟、各类工具调用次数、最终答案与
-  产物数，以及 git commit / 模型 / 预算配置；结果写入 `benchmarks/results/e2e-*.json`。
-  它与离线 Benchmark 是两套不同目的的评测，不要混为一谈。
+- **Online E2E Runtime Benchmark（在线端到端运行时基线，人工触发，不进 CI）**：
+  `run_e2e_benchmark.py` 像前端一样先连 WebSocket 再 POST `/api/task`，收集事件直到终态，
+  对每个用例施加确定性 expectations（工具路由 / 调用预算 / 来源 URL 或 DOI / 数值结果），
+  记录成败、延迟、各类工具调用次数、最终答案、产物数，以及 git commit、真实模型、预算与运行环境；
+  全部 passed 退出码 0，否则 1，连不上后端为环境错误 2。每次运行用唯一 `run_id` 隔离会话，
+  不复用历史 checkpoint。普通结果写入 gitignore 的 `benchmarks/results/e2e-*.json`；达到全
+  passed 时固化为可追溯的 `benchmarks/results/baseline-<git短SHA>.json` 并入库。它衡量“整条
+  运行时链路在真实模型下是否按预期工作”，没有人工 ground truth，故不提供“回答准确率”。
+  它与离线 Benchmark 是两套不同目的的评测，不要混为一谈；详见 `benchmarks/README.md`。
 
 ## 项目结构
 
