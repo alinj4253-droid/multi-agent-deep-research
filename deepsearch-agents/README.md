@@ -8,6 +8,8 @@
 
 > 本后端在开源教程 [didilili/ai-agents-from-zero](https://github.com/didilili/ai-agents-from-zero)（MIT）的实战项目基础上做了本地化与工程化改造：上游的 Tavily 付费搜索、MySQL 教学库、RAGFlow 私有知识库在本仓库均**已移除或替换**，改造清单见根目录 [CREDITS.md](../CREDITS.md)。配套前端在同级目录 `../frontend-demo/`。
 
+> 📌 **项目收尾总结（最终架构 / 运行 / 验证 / 数据源与费用 / 已知限制 / 隐私边界的单一权威说明）见 [`docs/FINAL_PROJECT_SUMMARY.md`](docs/FINAL_PROJECT_SUMMARY.md)。**
+
 ## 能力概览
 
 - **一主三从多智能体**：主智能体负责任务规划、子智能体调度与最终汇总；三个子智能体分别处理网络检索、学术文献、数据分析。

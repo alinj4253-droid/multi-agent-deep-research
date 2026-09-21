@@ -2,6 +2,8 @@
 
 > 基于 LangGraph DeepAgents 框架构建的多智能体协作研究系统，面向学术研究场景，支持**网络检索、数据分析、学术文献检索**三类任务，通过 WebSocket 实时展示多智能体执行过程。
 
+> 📌 **项目收尾总结（最终架构 / 运行方式 / 验证结果 / 数据源与费用 / 已知限制 / 隐私边界的单一权威说明）见 [`deepsearch-agents/docs/FINAL_PROJECT_SUMMARY.md`](deepsearch-agents/docs/FINAL_PROJECT_SUMMARY.md)。**
+
 ## 项目架构
 
 ```
