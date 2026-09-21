@@ -48,29 +48,60 @@ class SearchBudget:
         return count
 
 
+class _CacheEntry:
+    """缓存条目：value + 创建时间，用于 TTL 过期判定"""
+
+    __slots__ = ("value", "created_at")
+
+    def __init__(self, value, created_at: float):
+        self.value = value
+        self.created_at = created_at
+
+
 class SearchCache:
-    """基于 LRU 的检索结果缓存，避免重复请求数据源"""
+    """
+    标准化查询结果 LRU 缓存（Normalized Query LRU Cache）。
 
-    def __init__(self, max_size: int = 50):
-        self.cache = OrderedDict()
+    注意：这里只是对查询字符串做 strip/lower/合并空白后的精确匹配，
+    不是语义/向量缓存——两个"意思相近但字面不同"的查询不会互相命中。
+    缓存条目带创建时间，读取时按 TTL 判定是否过期；过期视为未命中，
+    触发真实请求。缓存命中不消耗检索预算。
+
+    key 必须由调用方拼上所有会影响结果的参数（如 query/region/max_results、
+    year_from/sources/max_per_source），不能只用查询词，否则不同参数会串结果。
+    """
+
+    def __init__(self, max_size: int = 50, default_ttl: Optional[float] = None):
+        self.cache: "OrderedDict" = OrderedDict()
         self.max_size = max_size
+        self.default_ttl = default_ttl
 
-    def _normalize_query(self, query: str) -> str:
-        """标准化查询：小写 + 去除多余空格，提高缓存命中率"""
+    @staticmethod
+    def normalize_query(query: str) -> str:
+        """标准化查询：小写 + 合并空白，仅做字面归一，不做语义匹配"""
         return re.sub(r"\s+", " ", query.strip().lower())
 
-    def get(self, query: str):
-        key = self._normalize_query(query)
-        if key in self.cache:
-            self.cache.move_to_end(key)
-            return self.cache[key]
-        return None
+    def get(self, key, ttl: Optional[float] = None, now: Optional[float] = None):
+        """按 key 读取缓存；过期或缺返回 None（视为未命中）"""
+        if key not in self.cache:
+            return None
+        entry = self.cache[key]
+        self.cache.move_to_end(key)
 
-    def set(self, query: str, result):
-        key = self._normalize_query(query)
+        effective_ttl = self.default_ttl if ttl is None else ttl
+        if effective_ttl is not None:
+            now = now if now is not None else time.time()
+            if now - entry.created_at > effective_ttl:
+                del self.cache[key]
+                return None
+        return entry.value
+
+    def set(self, key, value, now: Optional[float] = None):
+        """写入缓存（LRU 淘汰最久未用项）"""
+        created_at = now if now is not None else time.time()
         if key in self.cache:
             self.cache.move_to_end(key)
-        self.cache[key] = result
+        self.cache[key] = _CacheEntry(value=value, created_at=created_at)
         while len(self.cache) > self.max_size:
             self.cache.popitem(last=False)
 

@@ -21,7 +21,7 @@ from app.tools.search_common import SearchBudget, SearchCache
 # 学术检索一次调用即并发查询三源，绝大多数主题 1 次即可；
 # 仅在结果明显偏离时允许换词再试 1 次，故硬上限设为 2
 academic_budget = SearchBudget(max_per_session=2)
-academic_cache = SearchCache(max_size=50)
+academic_cache = SearchCache(max_size=50, default_ttl=2 * 60 * 60)
 
 
 @tool
@@ -51,8 +51,13 @@ def academic_paper_search(
     """
     thread_id = get_thread_context()
 
-    # 1. 缓存命中（学术查询标准化后命中即返回，不消耗预算）
-    cache_key = f"{query.strip().lower()}|{year_from}|{','.join(sources) if sources else 'all'}"
+    # 1. 缓存命中（key 含 query/year_from/sources/max_per_source），不消耗预算
+    cache_key = (
+        SearchCache.normalize_query(query),
+        year_from,
+        tuple(sorted(sources)) if sources else "all",
+        max_results_per_source,
+    )
     cached = academic_cache.get(cache_key)
     if cached is not None:
         monitor.report_tool(tool_name="学术检索缓存命中", args={"query": query})
@@ -91,7 +96,7 @@ def academic_paper_search(
     result["search_no"] = used
     result["remaining_searches"] = academic_budget.remaining(thread_id)
 
-    # 4. 仅缓存有论文的成功查询
+    # 4. 仅缓存有论文的成功查询（空结果不缓存）
     if result.get("papers"):
         academic_cache.set(cache_key, result)
 

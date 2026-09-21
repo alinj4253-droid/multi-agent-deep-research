@@ -29,11 +29,13 @@ class TestSearchCache:
         assert cache.get("not-exist") is None
 
     def test_query_normalization(self):
-        """大小写差异与多余空格应视为同一查询，命中同一缓存"""
+        """大小写差异与多余空白应视为同一查询：由 normalize_query 归一后再作 key"""
         cache = SearchCache()
         payload = {"results": [{"title": "x"}]}
-        cache.set("  Gaussian  Splatting ", payload)
-        assert cache.get("gaussian splatting") is payload
+        key = SearchCache.normalize_query("  Gaussian  Splatting ")
+        cache.set(key, payload)
+        other_key = SearchCache.normalize_query("gaussian splatting")
+        assert cache.get(other_key) is payload
 
     def test_lru_eviction(self):
         """超过容量后，最久未访问的条目被淘汰"""

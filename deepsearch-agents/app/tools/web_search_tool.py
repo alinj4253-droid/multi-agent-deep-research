@@ -8,7 +8,7 @@
 
 包含四项检索治理：
 1. 检索次数预算（SearchBudget）：按会话硬性限制对外检索次数，防止无限搜索
-2. LRU 语义缓存（SearchCache）：相同查询直接返回，减少重复请求
+2. 查询结果 LRU 缓存（SearchCache）：相同查询与参数直接返回，减少重复请求
 3. 熔断器（CircuitBreaker）：数据源连续失败后短时跳过，避免反复等待超时
 4. 关键词重排序：按查询词在标题/摘要中的匹配度二次排序，提升 Top-K 相关性
 """
@@ -39,7 +39,7 @@ __all__ = [
 
 # 每个研究任务最多实际对外检索 3 次（简单问题通常 1 次即可）
 search_budget = SearchBudget(max_per_session=3)
-search_cache = SearchCache(max_size=50)
+search_cache = SearchCache(max_size=50, default_ttl=20 * 60)
 
 # SearXNG 失败 2 次即熔断（其内部已含 http/wsl 双通道），冷却 60s；
 # DuckDuckGo 作为最后兜底，阈值放宽
@@ -157,10 +157,15 @@ def internet_search(
     """
     thread_id = get_thread_context()
 
-    # 1. 先查缓存，命中直接返回（缓存命中不消耗检索预算）
-    cached = search_cache.get(query)
+    # 1. 先查缓存（key 含 query/region/max_results），命中直接返回且不消耗预算
+    cache_key = (
+        SearchCache.normalize_query(query),
+        region,
+        max_results,
+    )
+    cached = search_cache.get(cache_key)
     if cached is not None:
-        monitor.report_tool(tool_name="语义缓存命中", args={"query": query})
+        monitor.report_tool(tool_name="查询缓存命中", args={"query": query})
         return cached
 
     # 2. 检索次数预算硬限制：达到上限后不再对外请求，引导模型立即总结
@@ -202,8 +207,8 @@ def internet_search(
         result["results"] = rerank_results(query, result["results"])
         result["search_no"] = used
         result["remaining_searches"] = search_budget.remaining(thread_id)
-        # 5. 仅缓存有结果的成功查询
-        search_cache.set(query, result)
+        # 5. 仅缓存有结果的成功查询（空结果/错误不缓存）
+        search_cache.set(cache_key, result)
 
     return result
 
