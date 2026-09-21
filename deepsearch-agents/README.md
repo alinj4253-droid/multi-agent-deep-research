@@ -56,6 +56,10 @@ python -m venv .venv
 # source .venv/bin/activate && pip install -r requirements.txt
 ```
 
+> 日常开发用宽松约束的 `requirements.txt`；**CI 安装的是 `requirements-lock.txt`**——它在干净
+> Python 3.11 跑通全部 pytest 与离线回归后由 `pip freeze` 锁定完整传递依赖（文件头部含复现步骤），
+> 保证 CI 可复现，不会因上游发版而“今天绿明天红”。
+
 ### 3.（可选）启动 SearXNG
 
 SearXNG 不是必需依赖：未启动时后端会自动降级到 DuckDuckGo。需要更稳定的多引擎聚合时，
@@ -120,7 +124,9 @@ npm run dev
   `CancelledError` 继续向上传播（不会被伪装成一次“成功的工具结果”）；每次执行使用唯一临时
   脚本，并在 `finally` 中清理，不残留垃圾文件。
 - **执行契约**：`run_deep_agent` 成功时返回 `AgentRunResult(session_id, final_answer, status,
-  artifacts)`；普通异常先推送 `error` 事件再抛出，取消先推送 `task_cancelled` 再抛出。
+  artifacts)`；普通异常先推送 `error` 事件再抛出，取消先推送 `task_cancelled` 再抛出；
+  若 graph 正常结束却没有产出任何非空最终回答（空串/纯空白），同样先推送 `error` 再抛出
+  `RuntimeError("Agent finished without a final answer")`，绝不把空结果标记为 completed。
 - **每任务预算（per-task reset）**：网页检索 3 次/任务、学术检索 2 次/任务、Python 执行
   12 次/任务，新一轮提问会重置；缓存命中不消耗预算。
 - **查询结果 LRU 缓存（非语义缓存）**：仅对查询词做 strip/lower/合并空白后的字面精确匹配，
@@ -177,7 +183,8 @@ CORS 默认放行 `http://localhost:5173` 与 `http://127.0.0.1:5173`，可用�
   确定性链路冒烟测试。运行 `pytest -q` 应全部通过（具体条数以当前代码与 CI 为准）。
 - **离线 Benchmark**：对真实代码做确定性断言（路径边界、白名单、缓存 TTL/完整 key、每任务
   预算、检索降级/熔断），秒级完成、不触网，CI 必跑；需要 LLM 的 4 个端到端用例在离线模式记为
-  skipped。结果写入 `benchmarks/results/YYYY-MM-DD.json`。
+  skipped。**面向公众的可复现证据以 GitHub Actions 的 Backend CI 运行结果为准**；本地运行
+  另写 `benchmarks/results/YYYY-MM-DD.json`（已被 `.gitignore` 忽略，不作为仓库证据）。
 - **Online E2E Runtime Benchmark（在线端到端运行时基线，人工触发，不进 CI）**：
   `run_e2e_benchmark.py` 像前端一样先连 WebSocket 再 POST `/api/task`，收集事件直到终态，
   对每个用例施加确定性 expectations（工具路由 / 调用预算 / 来源 URL 或 DOI / 数值结果），
@@ -195,7 +202,7 @@ deepsearch-agents/
 ├── app/
 │   ├── agent/
 │   │   ├── subagents/          # 网络检索 / 数据分析 / 学术文献三个子智能体
-│   │   ├── llm.py              # OpenAI 兼容模型初始化
+│   │   ├── llm.py              # OpenAI 兼容模型工厂（runtime 懒加载，import 不读密钥）
 │   │   ├── main_agent.py       # 主智能体组装与 run_deep_agent 执行入口
 │   │   ├── result.py           # AgentRunResult 执行结果契约
 │   │   └── prompts.py
@@ -215,7 +222,8 @@ deepsearch-agents/
 ├── docs/images/                # 本文档引用的截图与架构图
 ├── tests/                      # 单元测试（不依赖外网与大模型）
 ├── .env.example
-└── requirements.txt
+├── requirements.txt            # 开发用宽松依赖约束
+└── requirements-lock.txt       # CI 用可复现依赖锁（干净 3.11 验证后 pip freeze 生成）
 ```
 
 ## 能力边界

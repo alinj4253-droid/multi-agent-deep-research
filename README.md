@@ -133,8 +133,8 @@ cd deepsearch-agents
 ```
 
 - **单元测试**：覆盖任务生命周期串行化、子进程取消回收、Agent 执行契约、检索治理（预算/缓存/熔断）、学术多源融合、会话还原、接口层、安全校验与路径边界，另含一个经真实 ASGI（HTTP+WebSocket）的确定性链路冒烟。
-- **离线 Benchmark**：6 类共 24 例，对真实代码做确定性断言（路径边界、thread_id 白名单、缓存 TTL 与完整 key、每任务预算、检索降级与熔断）。最近一次离线运行 **20/20 用例通过**，4 个需 LLM 的端到端用例在离线模式记为 skipped（以 `benchmarks/results/*.json` 为准，详见 `benchmarks/README.md`）。
-- **端到端 Benchmark**：`run_e2e_benchmark.py` 走真实 HTTP+WebSocket+LLM，记录逐用例成败/延迟/工具调用/答案/产物数与 git SHA、模型、预算配置，与离线评测是两套不同目的的评测。
+- **离线 Benchmark（确定性，不触网、不调 LLM）**：6 类共 24 例，对真实代码做确定性断言（路径边界、thread_id 白名单、缓存 TTL 与完整 key、每任务预算、检索降级与熔断），最近一次 **20/20 通过**，4 个在线 LLM 用例在离线模式记为 skipped。它在 GitHub Actions 的 Backend CI 中每次 push/PR 自动执行，**面向公众的可复现证据以 CI 运行结果为准**；本地运行另写 `benchmarks/results/YYYY-MM-DD.json`（已被 `.gitignore` 忽略，不作为仓库证据），详见 `benchmarks/README.md`。
+- **端到端 Benchmark（在线，需人工触发，不进 CI）**：`run_e2e_benchmark.py` 走真实 HTTP+WebSocket+LLM，记录逐用例成败/延迟/工具调用/答案/产物数与 git SHA、模型、预算配置，与离线评测是两套不同目的的评测。在线结果**唯一入库的真实运行快照**为 `benchmarks/results/baseline-<commit>.json`（最近一次 4/4 全部通过）；日常 `e2e-*.json` 与 `YYYY-MM-DD.json` 均已被 gitignore，不入库、不作为对外证据。
 - **CI**：`.github/workflows/ci.yml` 在 push/PR 时自动跑后端 pytest + 离线 benchmark 与前端 lint + build。
 
 ## 目录结构

@@ -93,8 +93,10 @@
 
 ## 最近一次离线运行结果
 
-下表来自 `benchmarks/results/` 中最近一次真实离线运行（offline 模式）；以仓库内结果 JSON
-为准，若与下表不符请以 JSON 为准并重新运行：
+下表是离线模式（offline）的确定性结果；该回归在 GitHub Actions 的 Backend CI 中每次
+push/PR 自动执行，**面向公众的可复现证据以 CI 运行结果为准**。本地运行另写
+`benchmarks/results/YYYY-MM-DD.json`（已被 `.gitignore` 忽略、不入库），仅用于本地核对；
+若下表与 CI 不符，请以 CI 为准并在干净 Python 3.11 环境重新运行：
 
 | 类别 | 通过 | 失败 | 跳过 |
 |---|---|---|---|
