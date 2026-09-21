@@ -2,7 +2,7 @@
 Markdown 文件生成工具
 
 供主智能体把最终整理后的内容写入当前会话工作目录。工具会把模型传入的
-filename/path 交给 resolve_path 统一解析，避免模型直接操作真实绝对路径。
+filename/path 交给 resolve_session_path 严格解析到会话工作区之内，避免越界与模型直接操作真实绝对路径。
 """
 
 from pathlib import Path
@@ -41,7 +41,7 @@ def generate_markdown(
     session_dir = get_session_context()
     print(f"[MarkdownTool] 当前会话目录: {session_dir}")
 
-    # 先把模型传入的 path/filename 合成一个逻辑路径，再交给 resolve_path 做统一清洗
+    # 先把模型传入的 path/filename 合成一个逻辑路径，再交给 resolve_session_path 做边界解析
     if path and path != ".":
         full_input_path = str(Path(path) / filename)
     else:

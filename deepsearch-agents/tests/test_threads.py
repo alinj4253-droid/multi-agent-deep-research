@@ -22,7 +22,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from app.api import threads as th
-from app.utils.path_utils import resolve_path
+import app.utils.path_utils as pu  # noqa: E402
 
 SERDE = JsonPlusSerializer()
 
@@ -435,42 +435,35 @@ class TestGetThreadDetail:
 
 
 # ============================================================
-# path_utils：updated/ 分支基准
+# path_utils：严格 Session Workspace 边界（旧宽松 resolve_path 已删除）
 # ============================================================
-class TestPathUtilsUpdatedBranch:
-    def test_updated_resolves_against_app_dir_not_cwd(self, monkeypatch, tmp_path):
-        """updated/ 必须以 app 目录为基准，而不是进程 CWD"""
+class TestStrictResolverWorkspaceBoundary:
+    def test_relative_path_resolves_inside_session(self, tmp_path):
         import app.utils.path_utils as pu
 
-        monkeypatch.setattr(pu, "_APP_DIR", tmp_path)
-        # 故意把 CWD 切到别处，验证结果不受影响
-        monkeypatch.chdir(tmp_path / "elsewhere" if (tmp_path / "elsewhere").exists() else tmp_path)
-
-        resolved = pu.resolve_path("updated/session_x/data.csv")
-
-        assert resolved == str((tmp_path / "updated" / "session_x" / "data.csv").resolve())
-
-    def test_updated_branch_wins_over_session_dir(self, monkeypatch, tmp_path):
-        """即使传了 session_dir，updated/ 仍按上传目录解析"""
-        import app.utils.path_utils as pu
-
-        monkeypatch.setattr(pu, "_APP_DIR", tmp_path)
-        resolved = pu.resolve_path("updated/session_a/f.pdf", session_dir=str(tmp_path / "output" / "session_b"))
-
-        assert resolved == str((tmp_path / "updated" / "session_a" / "f.pdf").resolve())
-
-    def test_strips_sandbox_prefix_before_updated_branch(self, monkeypatch, tmp_path):
-        """模型返回的 /workspace 等沙箱前缀要先剥离，再走 updated/ 分支"""
-        import app.utils.path_utils as pu
-
-        monkeypatch.setattr(pu, "_APP_DIR", tmp_path)
-        resolved = pu.resolve_path("/workspace/updated/session_a/f.csv")
-
-        assert resolved == str((tmp_path / "updated" / "session_a" / "f.csv").resolve())
-
-    def test_plain_relative_path_still_uses_session_dir(self, tmp_path):
-        """非 updated/ 的相对路径仍按会话目录解析（原行为不变）"""
         session = tmp_path / "output" / "session_z"
-        resolved = resolve_path("report.md", session_dir=str(session))
+        resolved = pu.resolve_session_path("report.md", session)
+        assert resolved == (session / "report.md").resolve()
 
-        assert resolved == str((session / "report.md").resolve())
+    def test_virtual_workspace_prefix_is_stripped_inside(self, tmp_path):
+        import app.utils.path_utils as pu
+
+        session = tmp_path / "output" / "session_a"
+        resolved = pu.resolve_session_path("/workspace/report.md", session)
+        assert resolved == (session / "report.md").resolve()
+
+    def test_path_into_updated_dir_outside_workspace_rejected(self, tmp_path):
+        import app.utils.path_utils as pu
+
+        # output/session_b 为当前工作区，updated/ 是其外部目录，严格解析器必须拒绝
+        root = tmp_path / "output" / "session_b"
+        target = tmp_path / "updated" / "session_a" / "f.pdf"
+        with pytest.raises(pu.PathEscapeError):
+            pu.resolve_session_path(str(target), root)
+
+    def test_legacy_resolve_path_removed(self):
+        """旧的宽松解析器（绝对路径直接放行）不应再存在。"""
+        import app.utils.path_utils as pu
+
+        assert not hasattr(pu, "resolve_path")
+        assert not hasattr(pu, "_fix_nested_session_path")
