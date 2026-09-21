@@ -37,13 +37,6 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.6.0",
 ]
-# RAGFlow 知识库是可选能力：主链路不依赖。未安装时 app/ragflow 与
-# app/tools/ragflow_tools.py 仍可正常 import，调用工具会返回中文配置提示。
-# 需要知识库能力时执行：pip install -e ".[ragflow]"
-ragflow = [
-    "ragflow-sdk>=0.1.0",
-]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

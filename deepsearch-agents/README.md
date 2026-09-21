@@ -18,12 +18,12 @@
 
 如果你正在找一个适合学习 `DeepAgents`、`WebSocket`、`Tavily`、`RAGFlow` 和 AI Agent 工程开发的实战项目，「深度研搜」很可能是最适合你的项目。
 
-它不是只调用一次大模型接口，也不是套一个搜索 API 做问答演示。这个项目围绕深度研究场景，用 DeepAgents 组织主智能体和专家子智能体，让系统可以根据任务需要查公开网络、查结构化数据库、查 RAGFlow 私有知识库、读取用户上传附件，并把最终结果整理成回答、Markdown 或 PDF。换句话说，你学到的不是某一个框架 API，而是一条 AI 应用从多智能体规划、工具接入、上下文隔离、接口交付到前端联调的完整项目主线。
+它不是只调用一次大模型接口，也不是套一个搜索 API 做问答演示。这个项目围绕深度研究场景，用 DeepAgents 组织主智能体和专家子智能体，让系统可以根据任务需要查公开网络、查学术文献、用 Python 做数据分析、读取用户上传附件，并把最终结果整理成回答、Markdown 或 PDF。换句话说，你学到的不是某一个框架 API，而是一条 AI 应用从多智能体规划、工具接入、上下文隔离、接口交付到前端联调的完整项目主线。
 
 > 📌 **当前本地版本的能力构成**（与上文上游介绍略有出入，以下方为准）：
 > 三个子智能体是**网络检索**（SearXNG + DuckDuckGo）、**学术文献**（arXiv + OpenAlex + Crossref）、
 > **数据分析**（Python 沙箱），主智能体另握上传文件读取与 Markdown/PDF 交付工具。
-> 上游的「结构化数据库查询（MySQL）」助手已移除，「RAGFlow 私有知识库」降级为未接线的可选能力。
+上游的「结构化数据库查询（MySQL）」与「RAGFlow 私有知识库」助手在当前代码库中均已移除；三个在线子智能体为网络检索、数据分析与学术文献。
 > 详见顶部「🧭 本地版本运行指南」与「🏗️ 系统架构」。
 
 > 本套仓库是 [ai-agents-from-zero](https://github.com/didilili/ai-agents-from-zero) 教程体系中的 [实战项目-深度研搜](https://github.com/didilili/ai-agents-from-zero/tree/main/%E5%AE%9E%E6%88%98%E9%A1%B9%E7%9B%AE-%E6%B7%B1%E5%BA%A6%E7%A0%94%E6%90%9C) 配套源码仓库，除了可直接运行和二次开发的项目代码之外，也提供了与教程章节对应的 Git 分支演进过程，以及完整的在线图文讲义入口。
@@ -60,7 +60,7 @@ Agent/
 | 学术检索 | — | **arXiv + OpenAlex + Crossref** 三源并发、跨源去重、按引用/年份排序（OpenAlex 可选配免费 Key） |
 | 数据分析 | MySQL 业务库 | **Python 沙箱**：预装 numpy / pandas / matplotlib / scipy / openpyxl / Pillow，可现场生成图表与数据文件 |
 | 会话记忆 | InMemorySaver | **LangGraph SQLite 检查点**，刷新页面可恢复同一会话 |
-| 私有知识库 | RAGFlow | 代码保留为未接线的休眠 demo，主链路不依赖 |
+| 私有知识库 | RAGFlow | 已从代码库移除，主链路不依赖 |
 | Tavily / MySQL | 使用 | 已从主链路与 `requirements.txt` 移除 |
 
 ### 启动步骤（本机）
@@ -250,9 +250,9 @@ Agent/
 | 数据分析助手 | 编写并执行 Python 完成统计、计算与可视化   | `execute_python_code`（隔离沙箱，30 秒超时，每会话 ≤12 次）   |
 | 学术文献助手 | 检索论文、梳理研究现状与发展脉络           | `academic_paper_search`（arXiv + OpenAlex + Crossref 三源）   |
 
-> 上游教程中的「数据库查询助手」（MySQL）与「RAGFlow 助手」在当前后端**已不存在**：
+上游教程中的「数据库查询助手」（MySQL）与「RAGFlow 助手」在当前后端**已完全移除**：
 > 前者被数据分析助手取代（教学假数据无实际价值），后者降级为未接线的可选能力
-> （`app/ragflow/`，主链路不导入）。
+> （相关代码已删除，主链路不导入）。
 
 ![深度研搜网络搜索任务执行页：WebSocket 事件流、工具调用和最终回答](docs/images/deepsearch-network-search-result.jpg)
 
@@ -267,7 +267,7 @@ Agent/
 | 网络检索       | 自建 `SearXNG` + `ddgs`                          | SearXNG（WSL2 Docker，聚合多引擎）为主，DuckDuckGo 为降级；均免费无需 Key     |
 | 学术检索       | `arXiv` / `OpenAlex` / `Crossref`                | 三源官方免费 API 并发检索、跨源去重、年份/引用排序（OpenAlex 可选配免费 Key） |
 | 数据分析       | Python 子进程沙箱                                | 预装 numpy / pandas / matplotlib / scipy / openpyxl / Pillow，可现场出图      |
-| 私有知识库     | `ragflow-sdk`（**可选，默认未安装**）            | 已改为延迟导入，未配置时不影响主链路运行                                      |
+| 私有知识库     | RAGFlow                                        | 已从代码库移除，不再提供                                                    |
 | 文件处理       | `pypdf` / `python-docx` / `pandas` / `ReportLab` | 读取上传附件，生成 Markdown，转换 PDF                                         |
 | 后端接口       | `FastAPI` / `Uvicorn`                            | 提供任务、取消、上传、文件列表、下载、历史会话和 WebSocket 接口               |
 | 实时通信       | `WebSocket`                                      | 推送工具调用、助手调用、最终结果和错误事件                                    |
@@ -291,7 +291,6 @@ deepsearch-agents/
 │   │   └── server.py               # FastAPI 任务、上传、文件、下载、历史会话、WebSocket 接口
 │   ├── prompt/
 │   │   └── prompts.yml             # 主智能体和子智能体提示词配置
-│   ├── ragflow/                    # RAGFlow 配置与示例（可选能力，延迟导入）
 │   ├── tools/                      # SearXNG/DuckDuckGo 检索、arXiv/OpenAlex/Crossref
 │   │                               # 学术检索、Python 沙箱、文件读取、Markdown、PDF 工具
 │   ├── utils/                      # 路径解析、Markdown/PDF 底层转换等普通 Python 工具
@@ -303,14 +302,14 @@ deepsearch-agents/
 ├── tests/                          # 测试目录（不依赖外网与大模型）
 ├── .env.example                    # 环境变量示例
 ├── pyproject.toml                  # Python 项目依赖声明
-└── requirements.txt                # 依赖清单（ragflow-sdk 为可选，默认注释）
+└── requirements.txt                # 依赖清单
 ```
 
 > 前端不在本目录内，位于同级目录 `../frontend-demo/`（React + Vite + Tailwind，npm 管理）。
 >
 > 2026-09-20 清理的内容：`frontend/`（上游 Ant Design 前端）、`docker/`（MySQL 教学库）、
 > `uv.lock`（锁着已移除的 Tavily）、`examples/`（上游教程脚本，2 个引用已移除的 Tavily）、
-> `docs/knowledge_base/`（RAGFlow 示例 PDF，该能力已降级为可选）。
+（RAGFlow 相关示例已随能力一并移除）。
 > 以上均不被主链路引用，依赖管理实际使用 pip + venv。
 
 ## 🚀 接口与示例任务
@@ -381,8 +380,8 @@ VITE_WS_BASE_URL=ws://localhost:8001
 ## 📚 配套教程目录
 
 > ⚠️ 下表是**上游教程的原始章节**，其中第 10 章（Tavily 网络搜索）、第 11 章（MySQL 数据库助手）、
-> 第 12 章（RAGFlow 知识库）所述的技术栈在本仓库已被替换或降级：
-> 网络检索改为自建 SearXNG，数据库助手改为 Python 数据分析沙箱，RAGFlow 改为可选的未接线能力。
+> 第 12 章（RAGFlow 知识库）所述的技术栈在本仓库已被替换或移除：
+> 网络检索改为自建 SearXNG，数据库助手改为 Python 数据分析沙箱，RAGFlow 能力已移除。
 > 这些章节适合理解「上游原始设计与演进思路」，**不能照着在当前仓库执行**。
 
 教程总入口：[深度研搜完整教程](https://didilili.github.io/ai-agents-from-zero/#/%E5%AE%9E%E6%88%98%E9%A1%B9%E7%9B%AE-%E6%B7%B1%E5%BA%A6%E7%A0%94%E6%90%9C/0-%E5%89%8D%E8%A8%80)
