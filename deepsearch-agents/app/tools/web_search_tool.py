@@ -3,7 +3,7 @@
 
 封装 internet_search 工具，供网络检索子智能体检索互联网公开信息。
 数据源优先级：
-1. SearXNG（本地自建元搜索引擎，聚合 Google/Bing/DuckDuckGo 等 70+ 源）——主
+1. SearXNG（本地自建元搜索，引擎在容器 settings.yml 中可配置；当前启用 Bing/Yandex/搜狗/360 等）——主
 2. DuckDuckGo（ddgs 非官方接口，零配置）——兜底，SearXNG 不可用时自动降级
 
 包含四项检索治理：

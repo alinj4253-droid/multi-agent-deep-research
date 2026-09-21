@@ -1,8 +1,8 @@
 """
 SearXNG 自建元搜索引擎检索模块（双 transport 自适应）
 
-SearXNG 在本地 WSL2 的 Docker 中运行，聚合 Google / Bing / DuckDuckGo /
-Wikipedia 等 70+ 搜索引擎并去重，通过原生 JSON API 返回，无 Key、无配额。
+SearXNG 在本地 WSL2 的 Docker 中运行，引擎在容器 settings.yml 中可配置增删
+（当前启用 Bing/Yandex/搜狗/360 等），多源结果去重后通过原生 JSON API 返回，无 Key、无配额。
 
 Windows 后端访问 WSL 中容器有两种通道，本模块按可用性自动选择：
 1. http：直接访问 http://localhost:8888，标准方式、最快；

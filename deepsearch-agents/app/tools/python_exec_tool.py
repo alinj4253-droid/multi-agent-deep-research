@@ -70,9 +70,9 @@ async def execute_python_code(
     description: str = "",
 ) -> str:
     """
-    在隔离沙箱中执行 Python 代码，用于数据分析、统计计算和可视化生成。
+    在受控 Python 子进程中执行代码（subprocess 隔离 + 超时 + 工作目录限制），用于数据分析、统计计算和可视化生成。
 
-    沙箱工作目录固定为当前会话目录：用相对路径（如 chart.png）保存的图片/数据
+    子进程工作目录固定为当前会话目录：用相对路径（如 chart.png）保存的图片/数据
     都会自动落到该目录，执行结果会自动列出本次新生成或修改的文件，无需自行探测。
     常用库已可用：numpy、pandas、matplotlib、scipy、openpyxl、Pillow。
 

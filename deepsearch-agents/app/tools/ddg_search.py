@@ -16,7 +16,7 @@ def duckduckgo_search(
     safesearch: str = "moderate",
 ) -> dict:
     """
-    使用 DuckDuckGo 检索网页，返回与 Tavily 对齐的结构
+    使用 DuckDuckGo 检索网页，返回与主搜索结果对齐的结构
 
     :param query: 搜索关键词或自然语言问题
     :param max_results: 返回的最大结果数
@@ -42,7 +42,7 @@ def duckduckgo_search(
             {
                 "title": item.get("title", ""),
                 "url": item.get("href", ""),
-                # Tavily 用 content 字段存摘要，DuckDuckGo 对应 body 字段
+                # 主结果用 content 字段存摘要，DuckDuckGo 对应 body 字段
                 "content": item.get("body", ""),
             }
         )
